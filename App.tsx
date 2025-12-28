@@ -63,7 +63,7 @@ const App: React.FC = () => {
   const { data, thirdPartyWorkers, isLoading: dataLoading } = useAppData(user);
   
   // --- HELPERS ---
-  const addLocalAlert = useCallback((message: string, type: 'alert' | 'info' | 'success') => {
+  const addLocalAlert = useCallback((message: string, type: 'alert' | 'info' | 'success' | 'message' | 'system') => {
       console.log("Local Alert:", message, type);
   }, []);
 

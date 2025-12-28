@@ -2,9 +2,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { ref, query, limitToLast, onChildAdded } from 'firebase/database';
 import { db } from '../services/firebase';
-import { User } from '../types';
+import { User, AppNotification } from '../types';
 
-export const useChatNotifications = (user: User | null, activeTab: string, addNotification: (msg: string, type: 'info') => void) => {
+export const useChatNotifications = (user: User | null, activeTab: string, addNotification: (msg: string, type: AppNotification['type']) => void) => {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const appStartTimeRef = useRef(Date.now());
 
@@ -28,7 +28,7 @@ export const useChatNotifications = (user: User | null, activeTab: string, addNo
         // 3. Check active tab
         if (activeTab !== 'chat') {
             setUnreadChatCount(prev => prev + 1);
-            addNotification(`Nova mensagem de ${msg.senderName.split(' ')[0]} no Chat Geral`, 'info');
+            addNotification(`Nova mensagem de ${msg.senderName.split(' ')[0]} no Chat Geral`, 'message');
         }
     });
 
