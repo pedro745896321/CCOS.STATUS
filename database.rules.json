@@ -1,3 +1,4 @@
+
 {
   "rules": {
     ".read": "auth != null",
@@ -20,6 +21,16 @@
     },
 
     "private_messages": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "tasks": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+
+    "email_pendencies": {
       ".read": "auth != null",
       ".write": "auth != null"
     },

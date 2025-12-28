@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { AccessPoint } from '../types';
 import { ShieldCheck, MapPin, Clock, DoorClosed, AlertTriangle, Warehouse, Activity, RefreshCw, Filter, Search, X, Plus, Edit2, Trash2 } from 'lucide-react';
 
@@ -10,9 +10,26 @@ interface AccessControlListProps {
   onEdit?: (ap: AccessPoint) => void;
   onDelete?: (uuid: string) => void;
   readOnly?: boolean;
+  allowedWarehouses?: string[]; // New prop for filtering
 }
 
-const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onToggleStatus, onAdd, onEdit, onDelete, readOnly = false }) => {
+// Reuse logic
+const hasWarehousePermission = (allowedList: string[] | undefined, targetWarehouse: string) => {
+    if (!allowedList || allowedList.length === 0) return false;
+    const normalizedTarget = (targetWarehouse || '').toUpperCase();
+    return allowedList.some(allowed => {
+        const normalizedAllowed = allowed.toUpperCase();
+        if (normalizedAllowed === normalizedTarget) return true;
+        if (normalizedAllowed.includes(normalizedTarget) || normalizedTarget.includes(normalizedAllowed)) return true;
+        if (normalizedAllowed.includes('SP-IP') && normalizedTarget.includes('ITAPEVI')) return true;
+        if (normalizedAllowed.includes('PAVUNA') && normalizedTarget.includes('PAVUNA')) return true;
+        if (normalizedAllowed.includes('MERITI') && normalizedTarget.includes('MERITI')) return true;
+        if (normalizedAllowed.includes('4 ELOS') && normalizedTarget.includes('ELOS')) return true;
+        return false;
+    });
+};
+
+const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onToggleStatus, onAdd, onEdit, onDelete, readOnly = false, allowedWarehouses }) => {
   const [countdown, setCountdown] = useState(30);
   const [isScanning, setIsScanning] = useState(false);
   const [lastScanTime, setLastScanTime] = useState<string>('-');
@@ -31,7 +48,12 @@ const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onT
     const timer = setInterval(() => {
         setCountdown((prev) => {
             if (prev <= 1) {
-                triggerScan();
+                setIsScanning(true);
+                setTimeout(() => {
+                    setIsScanning(false);
+                    const now = new Date();
+                    setLastScanTime(now.toLocaleTimeString('pt-BR'));
+                }, 1500);
                 return 30;
             }
             return prev - 1;
@@ -40,57 +62,58 @@ const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onT
     return () => clearInterval(timer);
   }, []);
 
-  const triggerScan = () => {
-      setIsScanning(true);
-      setTimeout(() => {
-        setIsScanning(false);
-        const now = new Date();
-        setLastScanTime(now.toLocaleTimeString('pt-BR'));
-      }, 1500);
-  };
-
-  const getLatency = (status: string) => {
+  const getLatency = useCallback((status: string) => {
       if (status === 'OFFLINE') return 'Sem Resposta';
       return Math.floor(Math.random() * 13) + 2 + 'ms';
-  };
+  }, []);
 
-  const uniqueWarehouses = Array.from(new Set(accessPoints.map(p => p.warehouse))).sort();
+  // 1. Initial Permission Filtering
+  const permittedPoints = useMemo(() => {
+      if (allowedWarehouses && allowedWarehouses.length > 0) {
+          return accessPoints.filter(ap => hasWarehousePermission(allowedWarehouses, ap.warehouse));
+      }
+      return accessPoints;
+  }, [accessPoints, allowedWarehouses]);
 
-  const filteredPoints = accessPoints
-    .filter(ap => {
-        const matchesSearch = 
-            ap.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            ap.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            ap.location.toLowerCase().includes(searchTerm.toLowerCase());
-        
-        const matchesStatus = statusFilter === 'ALL' || ap.status === statusFilter;
-        const matchesWarehouse = warehouseFilter === 'ALL' || ap.warehouse === warehouseFilter;
+  const uniqueWarehouses = useMemo(() => Array.from(new Set(permittedPoints.map(p => p.warehouse))).sort(), [permittedPoints]);
 
-        return matchesSearch && matchesStatus && matchesWarehouse;
-    })
-    .sort((a, b) => {
-        if (a.status === 'OFFLINE' && b.status === 'ONLINE') return -1;
-        if (a.status === 'ONLINE' && b.status === 'OFFLINE') return 1;
-        return a.name.localeCompare(b.name);
-    });
+  const filteredPoints = useMemo(() => {
+    return permittedPoints
+        .filter(ap => {
+            const matchesSearch = 
+                ap.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                ap.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                ap.location.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            const matchesStatus = statusFilter === 'ALL' || ap.status === statusFilter;
+            const matchesWarehouse = warehouseFilter === 'ALL' || ap.warehouse === warehouseFilter;
 
-  const totalOnline = accessPoints.filter(p => p.status === 'ONLINE').length;
-  const totalOffline = accessPoints.filter(p => p.status === 'OFFLINE').length;
+            return matchesSearch && matchesStatus && matchesWarehouse;
+        })
+        .sort((a, b) => {
+            if (a.status === 'OFFLINE' && b.status === 'ONLINE') return -1;
+            if (a.status === 'ONLINE' && b.status === 'OFFLINE') return 1;
+            return a.name.localeCompare(b.name);
+        });
+  }, [permittedPoints, searchTerm, statusFilter, warehouseFilter]);
+
+  const totalOnline = useMemo(() => permittedPoints.filter(p => p.status === 'ONLINE').length, [permittedPoints]);
+  const totalOffline = useMemo(() => permittedPoints.filter(p => p.status === 'OFFLINE').length, [permittedPoints]);
 
   // CRUD Handlers
-  const openAddModal = () => {
+  const openAddModal = useCallback(() => {
       setEditingAp(null);
       setFormData({ status: 'ONLINE', warehouse: 'Geral', type: 'Controle de Acesso' });
       setShowModal(true);
-  };
+  }, []);
 
-  const openEditModal = (ap: AccessPoint) => {
+  const openEditModal = useCallback((ap: AccessPoint) => {
       setEditingAp(ap);
       setFormData({ ...ap });
       setShowModal(true);
-  };
+  }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = useCallback((e: React.FormEvent) => {
       e.preventDefault();
       if (!formData.name || !formData.id) return;
 
@@ -105,17 +128,24 @@ const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onT
           } as AccessPoint);
       }
       setShowModal(false);
-  };
+  }, [formData, editingAp, onEdit, onAdd]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-8">
       {/* Header with Stats */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                <DoorClosed className="text-blue-500" />
-                Controle de Acesso
-            </h2>
+            <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <DoorClosed className="text-blue-500" />
+                    Controle de Acesso
+                </h2>
+                {allowedWarehouses && (
+                    <p className="text-xs text-slate-400 mt-1">
+                        Visualizando apenas galpões permitidos.
+                    </p>
+                )}
+            </div>
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                 <div className="flex gap-2">
                     <div className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400 flex items-center gap-2">
@@ -171,7 +201,9 @@ const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onT
                         onChange={(e) => setWarehouseFilter(e.target.value)}
                         className="w-full sm:w-48 pl-3 pr-8 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-300 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
                     >
-                        <option value="ALL">Todos Galpões</option>
+                        <option value="ALL">
+                            {allowedWarehouses ? 'Meus Galpões' : 'Todos Galpões'}
+                        </option>
                         {uniqueWarehouses.map(w => (
                             <option key={w} value={w}>{w}</option>
                         ))}
@@ -356,4 +388,4 @@ const AccessControlList: React.FC<AccessControlListProps> = ({ accessPoints, onT
   );
 };
 
-export default AccessControlList;
+export default React.memo(AccessControlList);

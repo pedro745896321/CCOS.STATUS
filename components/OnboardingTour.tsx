@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Shield, LayoutDashboard, Video, Settings, Bell, CheckCircle2 } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Shield, LayoutDashboard, Video, Settings, Bell, CheckCircle2, ClipboardList, MessageSquare, HelpCircle } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface OnboardingTourProps {
@@ -14,34 +15,46 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ role, onFinish }) => {
 
   const steps = [
     {
-      title: "Bem-vindo ao CCOS",
-      description: "Este é o seu novo sistema ControlVision. Vamos fazer um tour rápido para você aprender a monitorar e gerenciar sua segurança com eficiência.",
-      icon: <Shield size={48} className="text-amber-400" />,
+      title: "Manual do Sistema CCOS",
+      description: "Bem-vindo! Este guia interativo explica todas as funcionalidades do sistema, incluindo as novas ferramentas de gestão de tarefas e comunicação.",
+      icon: <HelpCircle size={48} className="text-blue-400" />,
       image: null
     },
     {
       title: "Dashboard Inteligente",
-      description: "Na tela inicial, você tem uma visão geral em tempo real. Acompanhe câmeras online/offline, status dos acessos e alertas críticos de prioridade.",
+      description: "Visão geral em tempo real: monitore câmeras online/offline, status dos acessos e alertas de prioridade. Tudo em um só lugar.",
       icon: <LayoutDashboard size={48} className="text-blue-500" />,
     },
     {
-      title: "Monitoramento",
-      description: "Use as abas 'Câmeras' e 'Acessos' no menu lateral para ver listas detalhadas. Você pode filtrar por galpão, módulo ou status e reportar problemas.",
+      title: "Monitoramento de Câmeras",
+      description: "Acesse as abas 'Câmeras' e 'Acessos' no menu lateral. Use os filtros avançados por galpão, módulo ou status para encontrar dispositivos rapidamente.",
       icon: <Video size={48} className="text-emerald-500" />,
+    },
+    {
+        title: isAdmin ? "Gestão de Tarefas (Supervisão)" : "Minhas Tarefas (Operador)",
+        description: isAdmin 
+            ? "NOVO: Crie e delegue tarefas para a equipe. Monitore o progresso, visualize anexos e utilize o botão 'APAGAR TAREFA' para remover itens do banco de dados (ação permanente)." 
+            : "NOVO: Visualize suas tarefas pendentes. Clique em 'Iniciar', anexe fotos/evidências e conclua o trabalho. Você também pode apagar tarefas se necessário.",
+        icon: <ClipboardList size={48} className="text-purple-500" />
+    },
+    {
+        title: "Chat e Pendências",
+        description: "Comunicação em tempo real com a equipe. Utilize a função 'Criar Pendência' no chat para alertar sobre e-mails ou solicitações urgentes.",
+        icon: <MessageSquare size={48} className="text-pink-500" />
     },
     isAdmin ? {
       title: "Área Administrativa",
-      description: "Como Administrador, você tem acesso exclusivo para Cadastrar novos dispositivos, Gerenciar Usuários e Importar dados via planilha CSV.",
+      description: "Acesso exclusivo para Cadastrar novos dispositivos, Gerenciar Usuários (criar/bloquear contas) e Importar dados em massa via planilha CSV.",
       icon: <Settings size={48} className="text-slate-400" />,
     } : null,
     {
       title: "Notificações e Alertas",
-      description: "Fique atento ao ícone de sino no topo. Ele avisará sobre mudanças de status e ações importantes realizadas no sistema.",
+      description: "Fique atento ao ícone de sino no topo. Ele avisará sobre vencimentos de documentos, novas tarefas atribuídas e mensagens não lidas.",
       icon: <Bell size={48} className="text-rose-500" />,
     },
     {
       title: "Tudo Pronto!",
-      description: "Você está pronto para usar o ControlVision. Se precisar de ajuda, contate o suporte.",
+      description: "Você finalizou o manual. Para rever estas instruções a qualquer momento, clique no ícone de ajuda (?) no topo da tela.",
       icon: <CheckCircle2 size={48} className="text-emerald-400" />,
     }
   ].filter(Boolean) as any[]; // Remove nulls
@@ -120,7 +133,7 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ role, onFinish }) => {
                     onClick={handleNext}
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-900/20"
                 >
-                    {step === steps.length - 1 ? 'Começar' : 'Próximo'}
+                    {step === steps.length - 1 ? 'Concluir' : 'Próximo'}
                     {step < steps.length - 1 && <ChevronRight size={16} />}
                 </button>
             </div>

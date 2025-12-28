@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, AccessPoint, PublicDocument } from '../types';
+import { Camera, AccessPoint, PublicDocument, UserRole } from '../types';
 import { Video, DoorClosed, CheckCircle2, Info, Camera as CameraIcon, Upload, Image as ImageIcon, X, ScanLine, List, FileText, Search, Copy, CheckSquare, Square, Trash2, ClipboardList, Loader2, ArrowDown, AlertTriangle, Table, Settings, Plus, FileBadge, Calendar } from 'lucide-react';
 
 interface RegistrationProps {
@@ -8,6 +9,7 @@ interface RegistrationProps {
   onAddDocument: (doc: PublicDocument) => void;
   onDeleteDocument: (uuid: string) => void;
   documents?: PublicDocument[];
+  userRole?: UserRole; // Added role prop
 }
 
 type RegistrationType = 'CAMERA' | 'ACCESS' | 'LIST' | 'DOCUMENT';
@@ -27,7 +29,7 @@ const DEFAULT_OPTIONS = {
     types: ['DIARISTA', 'MENSALISTA', 'VISITANTE', 'MOTORISTA', 'AJUDANTE']
 };
 
-const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, onAddDocument, onDeleteDocument, documents = [] }) => {
+const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, onAddDocument, onDeleteDocument, documents = [], userRole = 'viewer' }) => {
   const [activeType, setActiveType] = useState<RegistrationType>('LIST'); 
   const [successMsg, setSuccessMsg] = useState('');
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
@@ -60,6 +62,8 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
       type: ''
   });
   const [listSearch, setListSearch] = useState('');
+
+  const isAdmin = userRole === 'admin';
 
   // --- EFFECT: LOAD/SAVE OPTIONS ---
   useEffect(() => {
@@ -422,6 +426,12 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
         </div>
       </div>
 
+      {!isAdmin && (
+          <div className="p-3 bg-blue-900/30 border border-blue-900/50 rounded-lg text-blue-200 text-sm flex items-center gap-2">
+              <Info size={16} /> Modo Visualização: Algumas ações são restritas a administradores.
+          </div>
+      )}
+
       {/* Success Notification */}
       {successMsg && (
           <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-4 rounded-xl flex items-center gap-3 animate-fade-in shadow-lg sticky top-4 z-50 backdrop-blur-md">
@@ -433,49 +443,51 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
       {/* --- SECTION: DOCUMENTS --- */}
       {activeType === 'DOCUMENT' && (
           <div className="space-y-6 animate-fade-in">
-              {/* Form */}
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                      <FileBadge className="text-blue-500" size={20} />
-                      Cadastrar Documento Público
-                  </h3>
-                  <form onSubmit={handleSaveDocument} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                      <div>
-                          <label className="block text-xs text-slate-400 mb-1">Nome do Documento</label>
-                          <input 
-                            type="text" 
-                            placeholder="Ex: AVCB Galpão 1" 
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm"
-                            value={newDoc.name}
-                            onChange={(e) => setNewDoc({...newDoc, name: e.target.value})}
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-xs text-slate-400 mb-1">Órgão Emissor</label>
-                          <input 
-                            type="text" 
-                            placeholder="Ex: Corpo de Bombeiros" 
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm"
-                            value={newDoc.organ}
-                            onChange={(e) => setNewDoc({...newDoc, organ: e.target.value})}
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-xs text-slate-400 mb-1">Data de Validade</label>
-                          <input 
-                            type="date" 
-                            className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm [color-scheme:dark]"
-                            value={newDoc.expirationDate}
-                            onChange={(e) => setNewDoc({...newDoc, expirationDate: e.target.value})}
-                          />
-                      </div>
-                      <div className="md:col-span-3 flex justify-end">
-                          <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded flex items-center gap-2">
-                              <Plus size={18} /> Adicionar
-                          </button>
-                      </div>
-                  </form>
-              </div>
+              {/* Form - Only for Admin */}
+              {isAdmin && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
+                      <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                          <FileBadge className="text-blue-500" size={20} />
+                          Cadastrar Documento Público
+                      </h3>
+                      <form onSubmit={handleSaveDocument} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                          <div>
+                              <label className="block text-xs text-slate-400 mb-1">Nome do Documento</label>
+                              <input 
+                                type="text" 
+                                placeholder="Ex: AVCB Galpão 1" 
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm"
+                                value={newDoc.name}
+                                onChange={(e) => setNewDoc({...newDoc, name: e.target.value})}
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs text-slate-400 mb-1">Órgão Emissor</label>
+                              <input 
+                                type="text" 
+                                placeholder="Ex: Corpo de Bombeiros" 
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm"
+                                value={newDoc.organ}
+                                onChange={(e) => setNewDoc({...newDoc, organ: e.target.value})}
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs text-slate-400 mb-1">Data de Validade</label>
+                              <input 
+                                type="date" 
+                                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm [color-scheme:dark]"
+                                value={newDoc.expirationDate}
+                                onChange={(e) => setNewDoc({...newDoc, expirationDate: e.target.value})}
+                              />
+                          </div>
+                          <div className="md:col-span-3 flex justify-end">
+                              <button type="submit" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded flex items-center gap-2">
+                                  <Plus size={18} /> Adicionar
+                              </button>
+                          </div>
+                      </form>
+                  </div>
+              )}
 
               {/* List */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
@@ -501,7 +513,9 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                                        <td className="p-4 text-slate-400">{doc.organ}</td>
                                        <td className="p-4 font-mono">{new Date(doc.expirationDate).toLocaleDateString('pt-BR')}</td>
                                        <td className="p-4 text-right">
-                                           <button onClick={() => onDeleteDocument(doc.uuid)} className="text-slate-500 hover:text-rose-500 p-2"><Trash2 size={16} /></button>
+                                           {isAdmin && (
+                                               <button onClick={() => onDeleteDocument(doc.uuid)} className="text-slate-500 hover:text-rose-500 p-2"><Trash2 size={16} /></button>
+                                           )}
                                        </td>
                                    </tr>
                                ))}
@@ -531,11 +545,13 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                                 {selectedImage ? (
                                     <>
                                         <img src={selectedImage} alt="Preview" className="w-full h-full object-cover" />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button onClick={clearImage} className="p-2 bg-rose-600 text-white rounded-full hover:bg-rose-500 transition-colors transform hover:scale-110">
-                                                <X size={20} />
-                                            </button>
-                                        </div>
+                                        {isAdmin && (
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <button onClick={clearImage} className="p-2 bg-rose-600 text-white rounded-full hover:bg-rose-500 transition-colors transform hover:scale-110">
+                                                    <X size={20} />
+                                                </button>
+                                            </div>
+                                        )}
                                     </>
                                 ) : (
                                     <div className="text-slate-700 text-center p-4">
@@ -559,35 +575,42 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                         </div>
 
                         <div className="md:col-span-2 flex flex-col justify-center space-y-5">
-                            <div className="bg-slate-900/50 p-4 md:p-6 rounded-xl border border-slate-800 space-y-4">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <button type="button" onClick={startCamera} className="flex items-center justify-center gap-3 px-4 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-all group">
-                                        <CameraIcon size={20} className="text-amber-400 group-hover:scale-110 transition-transform" />
-                                        <div className="text-left">
-                                            <span className="block text-sm font-bold">Tirar Foto</span>
-                                            <span className="block text-[10px] text-slate-500">Usar Webcam / Câmera</span>
-                                        </div>
+                            {isAdmin ? (
+                                <div className="bg-slate-900/50 p-4 md:p-6 rounded-xl border border-slate-800 space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <button type="button" onClick={startCamera} className="flex items-center justify-center gap-3 px-4 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-all group">
+                                            <CameraIcon size={20} className="text-amber-400 group-hover:scale-110 transition-transform" />
+                                            <div className="text-left">
+                                                <span className="block text-sm font-bold">Tirar Foto</span>
+                                                <span className="block text-[10px] text-slate-500">Usar Webcam / Câmera</span>
+                                            </div>
+                                        </button>
+                                        <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-3 px-4 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-all group">
+                                            <Upload size={20} className="text-blue-400 group-hover:scale-110 transition-transform" />
+                                            <div className="text-left">
+                                                <span className="block text-sm font-bold">Escolher Arquivo</span>
+                                                <span className="block text-[10px] text-slate-500">JPG, PNG</span>
+                                            </div>
+                                        </button>
+                                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
+                                    </div>
+                                    
+                                    <button 
+                                        type="button" 
+                                        onClick={handleExtractText}
+                                        disabled={isProcessingOCR}
+                                        className="w-full py-4 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 text-amber-500 font-bold rounded-lg uppercase text-sm tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isProcessingOCR ? <Loader2 className="animate-spin" size={18}/> : <ScanLine size={18} />}
+                                        {isProcessingOCR ? 'Enviando para OCR...' : 'Processar / Extrair Texto'}
                                     </button>
-                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-3 px-4 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-all group">
-                                        <Upload size={20} className="text-blue-400 group-hover:scale-110 transition-transform" />
-                                        <div className="text-left">
-                                            <span className="block text-sm font-bold">Escolher Arquivo</span>
-                                            <span className="block text-[10px] text-slate-500">JPG, PNG</span>
-                                        </div>
-                                    </button>
-                                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileSelect} />
                                 </div>
-                                
-                                <button 
-                                    type="button" 
-                                    onClick={handleExtractText}
-                                    disabled={isProcessingOCR}
-                                    className="w-full py-4 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 text-amber-500 font-bold rounded-lg uppercase text-sm tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {isProcessingOCR ? <Loader2 className="animate-spin" size={18}/> : <ScanLine size={18} />}
-                                    {isProcessingOCR ? 'Enviando para OCR...' : 'Processar / Extrair Texto'}
-                                </button>
-                            </div>
+                            ) : (
+                                <div className="text-center text-slate-500 italic p-6 border border-dashed border-slate-800 rounded-xl">
+                                    Somente administradores podem enviar imagens para OCR.
+                                </div>
+                            )}
+                            
                             <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-900/30 p-3 rounded border border-slate-800/50">
                                 <Info size={14} className="shrink-0 mt-0.5" />
                                 <p>A imagem será redimensionada (max 1200px) e enviada para o OCR.Space (Engine 2) para melhor reconhecimento de caracteres.</p>
@@ -606,22 +629,27 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                             <FileText size={20} />
                             2. Texto da Imagem
                         </h3>
-                        <button onClick={() => setRawListText('')} className="text-xs text-slate-500 hover:text-white flex items-center gap-1">
-                            <Trash2 size={12} /> Limpar
-                        </button>
+                        {isAdmin && (
+                            <button onClick={() => setRawListText('')} className="text-xs text-slate-500 hover:text-white flex items-center gap-1">
+                                <Trash2 size={12} /> Limpar
+                            </button>
+                        )}
                     </div>
                     <textarea
                         value={rawListText}
-                        onChange={(e) => setRawListText(e.target.value)}
+                        onChange={(e) => isAdmin && setRawListText(e.target.value)}
+                        readOnly={!isAdmin}
                         placeholder="O texto extraído aparecerá aqui..."
                         className="w-full h-32 md:h-48 bg-slate-950 border border-slate-700 rounded-lg p-4 text-slate-300 font-mono text-base md:text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 resize-none"
                     ></textarea>
-                    <div className="flex justify-center mt-4">
-                        <button onClick={handleOrganizeList} className="px-6 md:px-8 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-500 font-bold rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-2 transition-all hover:scale-105 text-sm md:text-base">
-                            <List size={18} />
-                            Organizar para Lista
-                        </button>
-                    </div>
+                    {isAdmin && (
+                        <div className="flex justify-center mt-4">
+                            <button onClick={handleOrganizeList} className="px-6 md:px-8 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-amber-500 font-bold rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-2 transition-all hover:scale-105 text-sm md:text-base">
+                                <List size={18} />
+                                Organizar para Lista
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="space-y-2">
@@ -661,9 +689,11 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                     <div className="bg-slate-900 border border-amber-900/30 rounded-xl p-4 shadow-lg flex flex-col gap-3 group relative">
                         <div className="flex items-center justify-between">
                             <label className="text-amber-500 font-bold text-xs uppercase tracking-wider">Responsável:</label>
-                            <button onClick={() => setEditingCategory('responsibles')} className="text-slate-600 hover:text-amber-500 transition-colors" title="Editar Lista">
-                                <Settings size={14} />
-                            </button>
+                            {isAdmin && (
+                                <button onClick={() => setEditingCategory('responsibles')} className="text-slate-600 hover:text-amber-500 transition-colors" title="Editar Lista">
+                                    <Settings size={14} />
+                                </button>
+                            )}
                         </div>
                         <select 
                             value={listMetadata.responsible}
@@ -681,9 +711,11 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                     <div className="bg-slate-900 border border-amber-900/30 rounded-xl p-4 shadow-lg flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                             <label className="text-amber-500 font-bold text-xs uppercase tracking-wider">Empresa/Operador:</label>
-                            <button onClick={() => setEditingCategory('contractors')} className="text-slate-600 hover:text-amber-500 transition-colors" title="Editar Lista">
-                                <Settings size={14} />
-                            </button>
+                            {isAdmin && (
+                                <button onClick={() => setEditingCategory('contractors')} className="text-slate-600 hover:text-amber-500 transition-colors" title="Editar Lista">
+                                    <Settings size={14} />
+                                </button>
+                            )}
                         </div>
                         <select 
                             value={listMetadata.contractor}
@@ -701,9 +733,11 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                     <div className="bg-slate-900 border border-amber-900/30 rounded-xl p-4 shadow-lg flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                             <label className="text-amber-500 font-bold text-xs uppercase tracking-wider">Tipo:</label>
-                            <button onClick={() => setEditingCategory('types')} className="text-slate-600 hover:text-amber-500 transition-colors" title="Editar Lista">
-                                <Settings size={14} />
-                            </button>
+                            {isAdmin && (
+                                <button onClick={() => setEditingCategory('types')} className="text-slate-600 hover:text-amber-500 transition-colors" title="Editar Lista">
+                                    <Settings size={14} />
+                                </button>
+                            )}
                         </div>
                         <select 
                             value={listMetadata.type}
@@ -772,7 +806,9 @@ const Registration: React.FC<RegistrationProps> = ({ onAddCamera, onAddAccess, o
                                                     </div>
                                                 </td>
                                                 <td className="p-3 text-center">
-                                                    <button onClick={() => deletePerson(p.id)} className="text-slate-600 hover:text-rose-500 transition-colors p-2"><Trash2 size={18} /></button>
+                                                    {isAdmin && (
+                                                        <button onClick={() => deletePerson(p.id)} className="text-slate-600 hover:text-rose-500 transition-colors p-2"><Trash2 size={18} /></button>
+                                                    )}
                                                 </td>
                                             </tr>
                                         );

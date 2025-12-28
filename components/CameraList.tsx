@@ -1,18 +1,36 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Camera, Status } from '../types';
-import { Video, MapPin, Box, User, AlertCircle, Search, X, Filter, Warehouse, Plus, Edit2, Trash2, Save } from 'lucide-react';
+import { Video, MapPin, Box, User, AlertCircle, Search, X, Filter, Warehouse, Plus, Edit2, Trash2, Save, PowerOff, Power } from 'lucide-react';
 
 interface CameraListProps {
   cameras: Camera[];
   onToggleStatus: (uuid: string) => void;
+  onSetWarehouseStatus?: (warehouse: string, status: Status) => void;
   onAdd?: (cam: Camera) => void;
   onEdit?: (cam: Camera) => void;
   onDelete?: (uuid: string) => void;
   readOnly?: boolean;
+  allowedWarehouses?: string[]; // New prop for filtering
 }
 
-const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onAdd, onEdit, onDelete, readOnly = false }) => {
+// Reuse logic (should ideally be in a util)
+const hasWarehousePermission = (allowedList: string[] | undefined, targetWarehouse: string) => {
+    if (!allowedList || allowedList.length === 0) return false;
+    const normalizedTarget = (targetWarehouse || '').toUpperCase();
+    return allowedList.some(allowed => {
+        const normalizedAllowed = allowed.toUpperCase();
+        if (normalizedAllowed === normalizedTarget) return true;
+        if (normalizedAllowed.includes(normalizedTarget) || normalizedTarget.includes(normalizedAllowed)) return true;
+        if (normalizedAllowed.includes('SP-IP') && normalizedTarget.includes('ITAPEVI')) return true;
+        if (normalizedAllowed.includes('PAVUNA') && normalizedTarget.includes('PAVUNA')) return true;
+        if (normalizedAllowed.includes('MERITI') && normalizedTarget.includes('MERITI')) return true;
+        if (normalizedAllowed.includes('4 ELOS') && normalizedTarget.includes('ELOS')) return true;
+        return false;
+    });
+};
+
+const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onSetWarehouseStatus, onAdd, onEdit, onDelete, readOnly = false, allowedWarehouses }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ONLINE' | 'OFFLINE'>('ALL');
   const [moduleFilter, setModuleFilter] = useState<string>('ALL');
@@ -23,52 +41,62 @@ const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onAdd,
   const [editingCam, setEditingCam] = useState<Camera | null>(null);
   const [formData, setFormData] = useState<Partial<Camera>>({});
 
-  // Unique lists for dropdowns
-  const uniqueModules = Array.from(new Set(cameras.map(c => c.module))).sort();
-  const uniqueWarehouses = Array.from(new Set(cameras.map(c => c.warehouse))).sort();
+  // 1. Initial Permission Filtering
+  const permittedCameras = useMemo(() => {
+      if (allowedWarehouses && allowedWarehouses.length > 0) {
+          return cameras.filter(c => hasWarehousePermission(allowedWarehouses, c.warehouse));
+      }
+      return cameras;
+  }, [cameras, allowedWarehouses]);
 
-  // Filter & Sort Logic
-  const filteredCameras = cameras
-    .filter(cam => {
-        const lowerTerm = searchTerm.toLowerCase();
-        const matchesSearch = (
-            cam.name.toLowerCase().includes(lowerTerm) ||
-            cam.id.toLowerCase().includes(lowerTerm) ||
-            cam.location.toLowerCase().includes(lowerTerm) ||
-            cam.module.toLowerCase().includes(lowerTerm) ||
-            cam.warehouse.toLowerCase().includes(lowerTerm) ||
-            cam.responsible.toLowerCase().includes(lowerTerm)
-        );
+  // Unique lists for dropdowns based on PERMITTED cameras
+  const uniqueModules = useMemo(() => Array.from(new Set(permittedCameras.map(c => c.module))).sort(), [permittedCameras]);
+  const uniqueWarehouses = useMemo(() => Array.from(new Set(permittedCameras.map(c => c.warehouse))).sort(), [permittedCameras]);
 
-        const matchesStatus = statusFilter === 'ALL' || cam.status === statusFilter;
-        const matchesModule = moduleFilter === 'ALL' || cam.module === moduleFilter;
-        const matchesWarehouse = warehouseFilter === 'ALL' || cam.warehouse === warehouseFilter;
+  // Filter & Sort Logic - Memoized
+  const filteredCameras = useMemo(() => {
+    return permittedCameras
+        .filter(cam => {
+            const lowerTerm = searchTerm.toLowerCase();
+            const matchesSearch = (
+                cam.name.toLowerCase().includes(lowerTerm) ||
+                cam.id.toLowerCase().includes(lowerTerm) ||
+                cam.location.toLowerCase().includes(lowerTerm) ||
+                cam.module.toLowerCase().includes(lowerTerm) ||
+                cam.warehouse.toLowerCase().includes(lowerTerm) ||
+                cam.responsible.toLowerCase().includes(lowerTerm)
+            );
 
-        return matchesSearch && matchesStatus && matchesModule && matchesWarehouse;
-    })
-    .sort((a, b) => {
-        if (a.status === 'OFFLINE' && b.status === 'ONLINE') return -1;
-        if (a.status === 'ONLINE' && b.status === 'OFFLINE') return 1;
-        return a.name.localeCompare(b.name);
-    });
+            const matchesStatus = statusFilter === 'ALL' || cam.status === statusFilter;
+            const matchesModule = moduleFilter === 'ALL' || cam.module === moduleFilter;
+            const matchesWarehouse = warehouseFilter === 'ALL' || cam.warehouse === warehouseFilter;
 
-  const totalOnline = cameras.filter(c => c.status === 'ONLINE').length;
-  const totalOffline = cameras.filter(c => c.status === 'OFFLINE').length;
+            return matchesSearch && matchesStatus && matchesModule && matchesWarehouse;
+        })
+        .sort((a, b) => {
+            if (a.status === 'OFFLINE' && b.status === 'ONLINE') return -1;
+            if (a.status === 'ONLINE' && b.status === 'OFFLINE') return 1;
+            return a.name.localeCompare(b.name);
+        });
+  }, [permittedCameras, searchTerm, statusFilter, moduleFilter, warehouseFilter]);
 
-  // CRUD Handlers
-  const openAddModal = () => {
+  const totalOnline = useMemo(() => permittedCameras.filter(c => c.status === 'ONLINE').length, [permittedCameras]);
+  const totalOffline = useMemo(() => permittedCameras.filter(c => c.status === 'OFFLINE').length, [permittedCameras]);
+
+  // CRUD Handlers - Memoized
+  const openAddModal = useCallback(() => {
       setEditingCam(null);
       setFormData({ status: 'ONLINE', warehouse: 'Geral', module: 'Geral' });
       setShowModal(true);
-  };
+  }, []);
 
-  const openEditModal = (cam: Camera) => {
+  const openEditModal = useCallback((cam: Camera) => {
       setEditingCam(cam);
       setFormData({ ...cam });
       setShowModal(true);
-  };
+  }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = useCallback((e: React.FormEvent) => {
       e.preventDefault();
       if (!formData.name || !formData.id) return;
 
@@ -84,17 +112,24 @@ const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onAdd,
           } as Camera);
       }
       setShowModal(false);
-  };
+  }, [formData, editingCam, onEdit, onAdd]);
 
   return (
     <div className="space-y-6 animate-fade-in pb-8">
       {/* Header Area */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                <Video className="text-blue-500" />
-                Lista de Câmeras
-            </h2>
+            <div>
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <Video className="text-blue-500" />
+                    Lista de Câmeras
+                </h2>
+                {allowedWarehouses && (
+                    <p className="text-xs text-slate-400 mt-1">
+                        Visualizando apenas galpões permitidos.
+                    </p>
+                )}
+            </div>
             <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                 <div className="flex gap-2">
                     <div className="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400 flex items-center gap-2">
@@ -154,7 +189,9 @@ const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onAdd,
                         onChange={(e) => setWarehouseFilter(e.target.value)}
                         className="w-full sm:w-48 pl-3 pr-8 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-300 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
                     >
-                        <option value="ALL">Todos Galpões</option>
+                        <option value="ALL">
+                            {allowedWarehouses ? 'Meus Galpões' : 'Todos Galpões'}
+                        </option>
                         {uniqueWarehouses.map(w => (
                             <option key={w} value={w}>{w}</option>
                         ))}
@@ -176,6 +213,34 @@ const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onAdd,
                     </select>
                     <Box className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={14} />
                  </div>
+
+                 {/* Bulk Actions - Warehouse */}
+                 {warehouseFilter !== 'ALL' && !readOnly && onSetWarehouseStatus && (
+                     <div className="flex items-center gap-2">
+                         <button
+                            onClick={() => {
+                                if (window.confirm(`Deseja LIGAR todas as câmeras de "${warehouseFilter}"?`)) {
+                                    onSetWarehouseStatus(warehouseFilter, 'ONLINE');
+                                }
+                            }}
+                            className="px-3 py-2 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 hover:text-white border border-emerald-800 rounded-lg transition-colors text-sm flex items-center justify-center gap-2 whitespace-nowrap"
+                            title={`Ligar todas as câmeras de ${warehouseFilter}`}
+                         >
+                            <Power size={16} /> <span className="hidden xl:inline">Ligar Galpão</span>
+                         </button>
+                         <button
+                            onClick={() => {
+                                if (window.confirm(`ATENÇÃO: Deseja realmente mudar TODAS as câmeras de "${warehouseFilter}" para OFFLINE?`)) {
+                                    onSetWarehouseStatus(warehouseFilter, 'OFFLINE');
+                                }
+                            }}
+                            className="px-3 py-2 bg-rose-900/30 hover:bg-rose-900/50 text-rose-400 hover:text-white border border-rose-800 rounded-lg transition-colors text-sm flex items-center justify-center gap-2 whitespace-nowrap"
+                            title={`Desligar todas as câmeras de ${warehouseFilter}`}
+                         >
+                            <PowerOff size={16} /> <span className="hidden xl:inline">Desligar Galpão</span>
+                         </button>
+                     </div>
+                 )}
 
                  {/* Reset Filters */}
                  {(searchTerm || statusFilter !== 'ALL' || moduleFilter !== 'ALL' || warehouseFilter !== 'ALL') && (
@@ -348,4 +413,4 @@ const CameraList: React.FC<CameraListProps> = ({ cameras, onToggleStatus, onAdd,
   );
 };
 
-export default CameraList;
+export default React.memo(CameraList);

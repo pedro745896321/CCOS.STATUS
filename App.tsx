@@ -1,102 +1,80 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { LayoutDashboard, Video, DoorClosed, Menu, Bell, X, Power, FileSpreadsheet, Trash2, Check, AlertCircle, CheckCircle2, Shield, Loader2, LogOut, Users, PlusSquare, Calendar, MessageSquare, Settings, Camera as CameraIcon, Save, Briefcase, Mail, User as UserIcon, Image as ImageIcon, Sun, Moon } from 'lucide-react';
-import { AppData, Camera, AccessPoint, Status, User, PublicDocument, Note, Meeting, CalendarEvent, ProcessedWorker } from './types';
-import { DEFAULT_CAMERAS_CSV, DEFAULT_ACCESS_CSV } from './constants';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import { LayoutDashboard, Video, DoorClosed, Menu, Bell, X, Power, FileSpreadsheet, Trash2, Check, AlertCircle, CheckCircle2, Shield, Loader2, LogOut, Users, PlusSquare, Calendar, MessageSquare, Settings, Camera as CameraIcon, Save, Briefcase, Mail, User as UserIcon, Image as ImageIcon, Sun, Moon, ClipboardList, CheckSquare, Ban, HelpCircle, Lock, Activity, Grid } from 'lucide-react';
+import { Camera, AccessPoint, User, PublicDocument, Note, Meeting, CalendarEvent, ProcessedWorker, AppNotification, Status } from './types';
 import { authService } from './services/auth';
-import Dashboard from './components/Dashboard';
-import CameraList from './components/CameraList';
-import AccessControlList from './components/AccessControlList';
-import Importer from './components/Importer';
-import Login from './components/Login';
-import UserManagement from './components/UserManagement';
-import Registration from './components/Registration';
-import OnboardingTour from './components/OnboardingTour';
-import Organizer from './components/Organizer';
-import Chat from './components/Chat';
-import ThirdPartyStatus from './components/ThirdPartyStatus';
+import { monitoringService } from './services/monitoring';
+import { organizerService } from './services/organizer';
+import { ref, onValue, update, push, query, orderByChild, equalTo } from 'firebase/database';
+import { db } from './services/firebase';
 
-interface Notification {
-  id: string;
-  message: string;
-  type: 'alert' | 'success' | 'info';
-  timestamp: string;
-  read: boolean;
-}
+// Hooks
+import { useTheme } from './hooks/useTheme';
+import { useAppData } from './hooks/useAppData';
+
+// Lazy Load Components
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const CameraList = lazy(() => import('./components/CameraList'));
+const AccessControlList = lazy(() => import('./components/AccessControlList'));
+const Importer = lazy(() => import('./components/Importer'));
+const Login = lazy(() => import('./components/Login'));
+const UserManagement = lazy(() => import('./components/UserManagement'));
+const Registration = lazy(() => import('./components/Registration'));
+const OnboardingTour = lazy(() => import('./components/OnboardingTour'));
+const Organizer = lazy(() => import('./components/Organizer'));
+const Chat = lazy(() => import('./components/Chat'));
+const ThirdPartyStatus = lazy(() => import('./components/ThirdPartyStatus'));
+const EmailPendencies = lazy(() => import('./components/EmailPendencies'));
+const TaskManagement = lazy(() => import('./components/TaskManagement'));
+const MyTasks = lazy(() => import('./components/MyTasks'));
+const AccessManagement = lazy(() => import('./components/AccessManagement'));
+const Heatmap = lazy(() => import('./components/Heatmap')); // NEW COMPONENT
+
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center h-full w-full">
+    <Loader2 className="animate-spin text-blue-500 w-8 h-8" />
+  </div>
+);
 
 const App: React.FC = () => {
-  // Authentication State
+  // --- STATE ---
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'cameras' | 'access' | 'organizer' | 'chat' | 'data' | 'users' | 'registration' | 'third-party'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'cameras' | 'access' | 'organizer' | 'chat' | 'data' | 'users' | 'registration' | 'third-party' | 'pendencies' | 'task-management' | 'my-tasks' | 'access-management' | 'heatmap'>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showTour, setShowTour] = useState(false);
   
-  // Theme State
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-
-  // Profile Edit State (Global)
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [editProfile, setEditProfile] = useState({
-      name: '',
-      jobTitle: '',
-      bio: '',
-      photoURL: '',
-      bannerURL: ''
-  });
-  const [profileSaving, setProfileSaving] = useState(false);
-
-  // Data State (Source of Truth)
-  const [data, setData] = useState<AppData>({
-    cameras: [],
-    accessPoints: [],
-    documents: [],
-    notes: [],
-    meetings: [],
-    events: [],
-    lastSync: '-'
-  });
-
-  // Third Party Workers State (Lifted Up)
-  const [thirdPartyWorkers, setThirdPartyWorkers] = useState<ProcessedWorker[]>([]);
-
-  // Notifications State
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  // Notification State
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Profile Modal
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [editProfile, setEditProfile] = useState({ name: '', jobTitle: '', bio: '', photoURL: '', bannerURL: '' });
+  const [profileSaving, setProfileSaving] = useState(false);
+  
+  // Password Change
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
-  // --- THEME EFFECT ---
-  useEffect(() => {
-      const savedTheme = localStorage.getItem('controlvision_theme');
-      if (savedTheme === 'light') {
-          setTheme('light');
-          document.documentElement.classList.remove('dark');
-      } else {
-          setTheme('dark');
-          document.documentElement.classList.add('dark');
-      }
+  // --- HOOKS ---
+  const { theme, toggleTheme } = useTheme();
+  const { data, thirdPartyWorkers, isLoading: dataLoading } = useAppData(user);
+  
+  // --- HELPERS ---
+  const addLocalAlert = useCallback((message: string, type: 'alert' | 'info') => {
+      console.log("Local Alert:", message);
   }, []);
 
-  const toggleTheme = () => {
-      const newTheme = theme === 'dark' ? 'light' : 'dark';
-      setTheme(newTheme);
-      localStorage.setItem('controlvision_theme', newTheme);
-      if (newTheme === 'dark') {
-          document.documentElement.classList.add('dark');
-      } else {
-          document.documentElement.classList.remove('dark');
-      }
-  };
+  // --- EFFECTS ---
 
-  // --- AUTH & INIT EFFECTS ---
-  
-  // 1. Check Login (Firebase Async)
+  // Auth Listener
   useEffect(() => {
     const unsubscribe = authService.subscribeToAuthChanges((currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
       
-      // Update local edit form when user data updates
       if (currentUser) {
           setEditProfile({
               name: currentUser.name,
@@ -106,638 +84,391 @@ const App: React.FC = () => {
               bannerURL: currentUser.bannerURL || ''
           });
 
-          // Check for first-time login tour logic
           const tourKey = `controlvision_tour_seen_${currentUser.uid}`;
-          const hasSeenTour = localStorage.getItem(tourKey);
-          if (!hasSeenTour) {
-              setShowTour(true);
-          } else {
-              setShowTour(false);
-          }
+          if (!localStorage.getItem(tourKey)) setShowTour(true);
       }
     });
-
     return () => unsubscribe();
   }, []);
 
-  // 2. Load Data from LocalStorage
+  // Notifications Listener
   useEffect(() => {
-    const savedData = localStorage.getItem('controlvision_data');
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        // Ensure new arrays exists for older saved data
-        setData({
-            ...parsed,
-            documents: parsed.documents || [],
-            notes: parsed.notes || [],
-            meetings: parsed.meetings || [],
-            events: parsed.events || []
-        });
-      } catch (e) {
-        console.error("Failed to load data", e);
+      if (!user) {
+          setNotifications([]);
+          return;
       }
-    }
-  }, []);
 
-  // 3. Save Data to LocalStorage on Change
+      const notifRef = query(ref(db, `notifications/${user.uid}`), orderByChild('timestamp'));
+      const unsubscribe = onValue(notifRef, (snapshot) => {
+          if (snapshot.exists()) {
+              const raw = snapshot.val();
+              const list: AppNotification[] = Object.keys(raw).map(key => ({
+                  id: key,
+                  ...raw[key]
+              }));
+              setNotifications(list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+          } else {
+              setNotifications([]);
+          }
+      });
+
+      return () => unsubscribe();
+  }, [user]);
+
+  // Route Guard
   useEffect(() => {
-    if (data.cameras.length > 0 || data.accessPoints.length > 0 || data.documents.length > 0 || data.notes.length > 0 || data.meetings.length > 0 || data.events.length > 0) {
-        localStorage.setItem('controlvision_data', JSON.stringify(data));
-    }
-  }, [data]);
+      if (!authLoading && user) {
+          const isAdmin = user.role === 'admin';
+          const isManager = user.role === 'manager';
 
-  // 3.1 Check Expirations & Meetings on Load
-  useEffect(() => {
-    const today = new Date();
-    
-    // Check Documents
-    if (data.documents.length > 0) {
-        data.documents.forEach(doc => {
-            const expDate = new Date(doc.expirationDate);
-            const diffTime = expDate.getTime() - today.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            if (diffDays < 0) {
-                const msg = `ALERTA: Documento "${doc.name}" venceu em ${expDate.toLocaleDateString('pt-BR')}!`;
-                setNotifications(prev => {
-                    if (prev.some(n => n.message === msg)) return prev;
-                    return [{
-                        id: Date.now().toString() + Math.random(),
-                        message: msg,
-                        type: 'alert',
-                        timestamp: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
-                        read: false
-                    }, ...prev];
-                });
-            } else if (diffDays <= 30) {
-                const msg = `AVISO: Documento "${doc.name}" vence em ${diffDays} dias.`;
-                setNotifications(prev => {
-                    if (prev.some(n => n.message === msg)) return prev;
-                    return [{
-                        id: Date.now().toString() + Math.random(),
-                        message: msg,
-                        type: 'info',
-                        timestamp: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
-                        read: false
-                    }, ...prev];
-                });
-            }
-        });
-    }
-
-    // Check Meetings Today
-    const todayStr = today.toISOString().split('T')[0];
-    const todaysMeetings = data.meetings.filter(m => m.date === todayStr);
-    if (todaysMeetings.length > 0) {
-        const msg = `Você tem ${todaysMeetings.length} reunião(ões) agendada(s) para hoje.`;
-        setNotifications(prev => {
-             if (prev.some(n => n.message === msg)) return prev;
-             return [{
-                 id: Date.now().toString() + Math.random(),
-                 message: msg,
-                 type: 'info',
-                 timestamp: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
-                 read: false
-             }, ...prev];
-        });
-    }
-
-  }, [data.documents, data.meetings]);
-
-  // 4. Route Guard (Redirect non-admins)
-  useEffect(() => {
-      if (!authLoading && user && user.role !== 'admin') {
-          if (activeTab === 'data' || activeTab === 'users' || activeTab === 'registration') {
+          // Admin Routes Guard
+          if (!isAdmin && ['data', 'users', 'task-management'].includes(activeTab)) {
               setActiveTab('dashboard');
-              addNotification("Acesso negado: Área restrita a administradores.", 'alert');
+              alert("Acesso negado: Área restrita.");
+          }
+          
+          // Manager Routes Guard
+          if (isManager && !['dashboard', 'access-management', 'heatmap', 'third-party', 'cameras', 'access'].includes(activeTab)) {
+              setActiveTab('dashboard');
           }
       }
   }, [activeTab, user, authLoading]);
 
-
-  const handleLogin = (loggedInUser: User) => {
-    // Handled by subscribeToAuthChanges
-  };
-
-  const handleLogout = () => {
-    authService.logout();
-    setActiveTab('dashboard');
-  };
-
-  const handleTourFinish = () => {
-      if (user) {
-          const tourKey = `controlvision_tour_seen_${user.uid}`;
-          localStorage.setItem(tourKey, 'true'); // Persist immediately
-      }
-      setShowTour(false);
-  };
-
-  // Check Admin Role
-  const isAdmin = user?.role === 'admin';
-
   // Responsive Sidebar
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setSidebarOpen(false);
-      } else {
-        setSidebarOpen(true);
-      }
-    };
+    const handleResize = () => setSidebarOpen(window.innerWidth >= 1024);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleTabChange = (tab: typeof activeTab) => {
-    if ((tab === 'data' || tab === 'users' || tab === 'registration') && !isAdmin) {
-        addNotification("Acesso negado.", 'alert');
+
+  // --- HANDLERS ---
+
+  const handleTabChange = useCallback((tab: typeof activeTab) => {
+    const isAdmin = user?.role === 'admin';
+    const isManager = user?.role === 'manager';
+
+    // Admin Guard
+    if (['data', 'users', 'task-management'].includes(tab) && !isAdmin) {
+        alert("Acesso negado.");
         return;
     }
-    setActiveTab(tab);
-    if (window.innerWidth < 1024) {
-      setSidebarOpen(false);
+
+    // Manager Guard
+    if (isManager && !['dashboard', 'access-management', 'heatmap', 'third-party', 'cameras', 'access'].includes(tab)) {
+        alert("Acesso não permitido para o perfil de Gestor.");
+        return;
     }
+
+    setActiveTab(tab);
+    if (window.innerWidth < 1024) setSidebarOpen(false);
+  }, [user]);
+
+  const handleLogout = useCallback(() => {
+    authService.logout();
+    setActiveTab('dashboard');
+  }, []);
+
+  // Notification Helpers
+  const markAllRead = async () => {
+      if (!user) return;
+      const updates: any = {};
+      notifications.forEach(n => {
+          if (!n.read) updates[`notifications/${user.uid}/${n.id}/read`] = true;
+      });
+      if (Object.keys(updates).length > 0) {
+          await update(ref(db), updates);
+      }
   };
 
-  // --- PROFILE HANDLERS ---
+  const removeNotification = async (id: string) => {
+      if (!user) return;
+      await update(ref(db, `notifications/${user.uid}`), { [id]: null });
+  };
+
+  // Profile & Password Handlers (Same as before)
   const handleSaveProfile = async () => {
       if (!user) return;
       setProfileSaving(true);
       try {
           await authService.updateUserProfile(user.uid, editProfile);
-          addNotification('Perfil atualizado com sucesso!', 'success');
+          alert('Perfil atualizado com sucesso!');
           setShowProfileModal(false);
       } catch (err) {
-          console.error(err);
-          addNotification('Erro ao atualizar perfil.', 'alert');
+          alert('Erro ao atualizar perfil.');
       } finally {
           setProfileSaving(false);
+      }
+  };
+
+  const handleChangePassword = async () => {
+      if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+          alert("As senhas não coincidem.");
+          return;
+      }
+      if (passwordForm.newPassword.length < 6) {
+          alert("A senha deve ter pelo menos 6 caracteres.");
+          return;
+      }
+      setPasswordLoading(true);
+      try {
+          await authService.updateUserPassword(passwordForm.newPassword);
+          alert("Senha alterada com sucesso!");
+          setPasswordForm({ newPassword: '', confirmPassword: '' });
+          setShowPasswordChange(false);
+      } catch (err: any) {
+          console.error(err);
+          if (err.code === 'auth/requires-recent-login') {
+              alert("Por segurança, faça login novamente antes de alterar sua senha.");
+              authService.logout();
+          } else {
+              alert("Erro ao alterar senha: " + err.message);
+          }
+      } finally {
+          setPasswordLoading(false);
       }
   };
 
   const handleProfileImageUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'photoURL' | 'bannerURL') => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-          alert("A imagem é muito grande. Tente uma imagem menor que 2MB.");
-          return;
-      }
       const reader = new FileReader();
       reader.onload = (evt) => {
-          if (evt.target?.result) {
-              setEditProfile(prev => ({ ...prev, [field]: evt.target?.result as string }));
-          }
+          if (evt.target?.result) setEditProfile(prev => ({ ...prev, [field]: evt.target?.result as string }));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // --- CRUD OPERATIONS ---
-
-  // Import (Bulk Replace)
-  const handleImportData = (cameras: Camera[], accessPoints: AccessPoint[]) => {
-      const now = new Date();
-      const formattedTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      
-      const newData = {
-          ...data, // Keep documents, notes, meetings, etc
-          cameras,
-          accessPoints,
-          lastSync: formattedTime
-      };
-      
-      setData(newData);
-      addNotification("Dados importados com sucesso.", 'success');
-  };
-
-  // Camera CRUD
-  const handleAddCamera = (cam: Camera) => {
-      setData(prev => ({ ...prev, cameras: [...prev.cameras, cam] }));
-      addNotification(`Câmera ${cam.name} adicionada.`, 'success');
-  };
-  
-  const handleEditCamera = (cam: Camera) => {
-      setData(prev => ({
-          ...prev,
-          cameras: prev.cameras.map(c => c.uuid === cam.uuid ? cam : c)
-      }));
-      addNotification(`Câmera ${cam.name} atualizada.`, 'info');
-  };
-
-  const handleDeleteCamera = (uuid: string) => {
-      setData(prev => ({
-          ...prev,
-          cameras: prev.cameras.filter(c => c.uuid !== uuid)
-      }));
-      addNotification(`Câmera removida.`, 'alert');
-  };
-
-  // Access CRUD
-  const handleAddAccess = (ap: AccessPoint) => {
-      setData(prev => ({ ...prev, accessPoints: [...prev.accessPoints, ap] }));
-      addNotification(`Acesso ${ap.name} adicionado.`, 'success');
-  };
-
-  const handleEditAccess = (ap: AccessPoint) => {
-      setData(prev => ({
-          ...prev,
-          accessPoints: prev.accessPoints.map(a => a.uuid === ap.uuid ? ap : a)
-      }));
-      addNotification(`Acesso ${ap.name} atualizado.`, 'info');
-  };
-
-  const handleDeleteAccess = (uuid: string) => {
-      setData(prev => ({
-          ...prev,
-          accessPoints: prev.accessPoints.filter(a => a.uuid !== uuid)
-      }));
-      addNotification(`Acesso removido.`, 'alert');
-  };
-  
-  // Document CRUD
-  const handleAddDocument = (doc: PublicDocument) => {
-      setData(prev => ({ ...prev, documents: [...prev.documents, doc] }));
-      addNotification(`Documento ${doc.name} registrado.`, 'success');
-  };
-  
-  const handleDeleteDocument = (uuid: string) => {
-      setData(prev => ({ ...prev, documents: prev.documents.filter(d => d.uuid !== uuid) }));
-      addNotification(`Documento removido.`, 'info');
-  };
-
-  // --- ORGANIZER CRUD ---
-  // Notes
-  const handleAddNote = (note: Note) => setData(prev => ({ ...prev, notes: [note, ...prev.notes] }));
-  const handleToggleNote = (id: string) => setData(prev => ({ ...prev, notes: prev.notes.map(n => n.id === id ? { ...n, completed: !n.completed } : n) }));
-  const handleEditNote = (id: string, content: string) => setData(prev => ({ ...prev, notes: prev.notes.map(n => n.id === id ? { ...n, content } : n) }));
-  const handleDeleteNote = (id: string) => setData(prev => ({ ...prev, notes: prev.notes.filter(n => n.id !== id) }));
-  
-  // Meetings
-  const handleAddMeeting = (meeting: Meeting) => setData(prev => ({ ...prev, meetings: [...prev.meetings, meeting] }));
-  const handleDeleteMeeting = (id: string) => setData(prev => ({ ...prev, meetings: prev.meetings.filter(m => m.id !== id) }));
-
-  // Events
-  const handleAddEvent = (event: CalendarEvent) => setData(prev => ({ ...prev, events: [...prev.events, event] }));
-  const handleDeleteEvent = (id: string) => setData(prev => ({ ...prev, events: prev.events.filter(e => e.id !== id) }));
-
-
-  // Toggle Status (Quick Edit)
-  const handleToggleAccessStatus = (uuid: string) => {
-    if (!isAdmin) return;
-    setData(prev => {
-      const target = prev.accessPoints.find(a => a.uuid === uuid);
-      const newStatus = target?.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
-      
-      if (target) {
-        const msg = `Acesso ${target.name} mudou para ${newStatus}`;
-        addNotification(msg, newStatus === 'OFFLINE' ? 'alert' : 'success');
+  // Monitoramento CRUD
+  const handleImportData = useCallback(async (cameras: Camera[], accessPoints: AccessPoint[]) => {
+      try {
+          await monitoringService.importData(cameras, accessPoints);
+          alert("Dados importados com sucesso.");
+      } catch {
+          alert("Erro ao importar dados.");
       }
+  }, []);
 
-      return {
-        ...prev,
-        accessPoints: prev.accessPoints.map(ap => 
-            ap.uuid === uuid 
-            ? { ...ap, status: newStatus } 
-            : ap
-        )
-      };
-    });
-  };
-
-  const handleToggleCameraStatus = (uuid: string) => {
-    if (!isAdmin) return;
-    setData(prev => {
-      const target = prev.cameras.find(c => c.uuid === uuid);
-      const newStatus = target?.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
-      
-      if (target) {
-        const msg = `Câmera ${target.name} mudou para ${newStatus}`;
-        addNotification(msg, newStatus === 'OFFLINE' ? 'alert' : 'success');
+  const handleSaveThirdPartyWorkers = useCallback(async (workers: ProcessedWorker[]) => {
+      try {
+          await monitoringService.saveThirdPartyWorkers(workers);
+          alert("Planilha de terceiros sincronizada.");
+      } catch {
+          alert("Erro ao salvar terceiros.");
       }
+  }, []);
 
-      return {
-        ...prev,
-        cameras: prev.cameras.map(c => 
-            c.uuid === uuid 
-            ? { ...c, status: newStatus } 
-            : c
-        )
-      };
-    });
-  };
+  const handleAddCamera = useCallback(async (cam: Camera) => await monitoringService.addCamera(cam, data.cameras), [data.cameras]);
+  const handleEditCamera = useCallback(async (cam: Camera) => await monitoringService.updateCamera(cam, data.cameras), [data.cameras]);
+  const handleDeleteCamera = useCallback(async (uuid: string) => await monitoringService.deleteCamera(uuid, data.cameras), [data.cameras]);
+  const handleAddAccess = useCallback(async (ap: AccessPoint) => await monitoringService.addAccessPoint(ap, data.accessPoints), [data.accessPoints]);
+  const handleEditAccess = useCallback(async (ap: AccessPoint) => await monitoringService.updateAccessPoint(ap, data.accessPoints), [data.accessPoints]);
+  const handleDeleteAccess = useCallback(async (uuid: string) => await monitoringService.deleteAccessPoint(uuid, data.accessPoints), [data.accessPoints]);
+  const handleAddDocument = useCallback(async (doc: PublicDocument) => await monitoringService.addDocument(doc, data.documents), [data.documents]);
+  const handleDeleteDocument = useCallback(async (uuid: string) => await monitoringService.deleteDocument(uuid, data.documents), [data.documents]);
 
-  const handleFullReset = () => {
-    if(!window.confirm("Isso apagará todos os dados do sistema. Continuar?")) return;
-    setData({ cameras: [], accessPoints: [], documents: [], notes: [], meetings: [], events: [], lastSync: '-' });
-    localStorage.removeItem('controlvision_data');
-    setNotifications([]);
-    setActiveTab('dashboard'); 
-  };
+  const handleToggleCameraStatus = useCallback(async (uuid: string) => {
+      if (user?.role !== 'admin') return;
+      const res = await monitoringService.toggleCameraStatus(uuid, data.cameras);
+      if (res) addLocalAlert(`Câmera ${res.name} mudou para ${res.newStatus}`, res.newStatus === 'OFFLINE' ? 'alert' : 'info');
+  }, [user, data.cameras, addLocalAlert]);
 
-  // Notifications logic
-  const addNotification = (message: string, type: 'alert' | 'success' | 'info') => {
-      const newNote: Notification = {
-          id: Date.now().toString(),
-          message,
-          type,
-          timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          read: false
-      };
-      setNotifications(prev => [newNote, ...prev].slice(0, 50));
-  };
-  const markAllRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
+  const handleSetWarehouseStatus = useCallback(async (warehouse: string, status: Status) => {
+      if (user?.role !== 'admin') return;
+      await monitoringService.setWarehouseStatus(warehouse, status, data.cameras);
+      addLocalAlert(`Todas as câmeras de ${warehouse} foram definidas como ${status}.`, status === 'OFFLINE' ? 'alert' : 'success');
+  }, [user, data.cameras, addLocalAlert]);
+
+  const handleToggleAccessStatus = useCallback(async (uuid: string) => {
+      if (user?.role !== 'admin') return;
+      const res = await monitoringService.toggleAccessStatus(uuid, data.accessPoints);
+      if (res) addLocalAlert(`Acesso ${res.name} mudou para ${res.newStatus}`, res.newStatus === 'OFFLINE' ? 'alert' : 'info');
+  }, [user, data.accessPoints, addLocalAlert]);
+
+  // Organizer CRUD
+  const handleAddNote = useCallback(async (note: Note) => await organizerService.addNote(note, data.notes), [data.notes]);
+  const handleToggleNote = useCallback(async (id: string) => await organizerService.toggleNote(id, data.notes), [data.notes]);
+  const handleEditNote = useCallback(async (id: string, content: string) => await organizerService.editNote(id, content, data.notes), [data.notes]);
+  const handleDeleteNote = useCallback(async (id: string) => await organizerService.deleteNote(id, data.notes), [data.notes]);
+  const handleAddMeeting = useCallback(async (m: Meeting) => await organizerService.addMeeting(m, data.meetings), [data.meetings]);
+  const handleDeleteMeeting = useCallback(async (id: string) => await organizerService.deleteMeeting(id, data.meetings), [data.meetings]);
+  const handleAddEvent = useCallback(async (ev: CalendarEvent) => await organizerService.addEvent(ev, data.events), [data.events]);
+  const handleDeleteEvent = useCallback(async (id: string) => await organizerService.deleteEvent(id, data.events), [data.events]);
+
+  const handleFullReset = useCallback(async () => {
+    await monitoringService.fullReset();
+    setActiveTab('dashboard');
+  }, []);
+
   const unreadCount = notifications.filter(n => !n.read).length;
+  const isAdmin = user?.role === 'admin';
+  const isManager = user?.role === 'manager';
 
-  // --- RENDER 1: LOADING ---
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <Loader2 className="animate-spin text-blue-500 w-10 h-10" />
-      </div>
-    );
+  // --- RENDERS ---
+
+  if (authLoading) return <div className="min-h-screen bg-slate-200 dark:bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 w-10 h-10" /></div>;
+  
+  if (!user) return (
+    <Suspense fallback={<LoadingFallback />}>
+      <Login onLogin={() => {}} />
+    </Suspense>
+  );
+
+  // --- BLOCKED SCREEN ---
+  if (user.status === 'blocked') {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
+              <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl text-center max-w-md shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-red-600"></div>
+                  <Ban size={48} className="mx-auto text-rose-500 mb-4" />
+                  <h2 className="text-2xl font-bold text-white mb-2">Acesso Suspenso</h2>
+                  <p className="text-slate-400 mb-6 text-sm leading-relaxed">Conta bloqueada. Contate o administrador.</p>
+                  <button onClick={handleLogout} className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition-colors w-full flex items-center justify-center gap-2">
+                      <LogOut size={18} /> Voltar ao Login
+                  </button>
+              </div>
+          </div>
+      );
   }
 
-  // --- RENDER 2: LOGIN ---
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  // --- RENDER 3: DASHBOARD / ACTIVATED ---
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex font-sans overflow-hidden transition-colors duration-300">
+    <div className="h-screen w-full bg-slate-200 dark:bg-slate-900 text-slate-900 dark:text-slate-100 flex font-sans overflow-hidden transition-colors duration-300">
       
-      {/* ONBOARDING TOUR */}
-      {showTour && (
-          <OnboardingTour role={user.role} onFinish={handleTourFinish} />
-      )}
+      <Suspense fallback={null}>
+        {showTour && <OnboardingTour role={user.role} onFinish={() => { localStorage.setItem(`controlvision_tour_seen_${user.uid}`, 'true'); setShowTour(false); }} />}
+      </Suspense>
 
-      {/* Sidebar */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-40 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        w-64 lg:translate-x-0 lg:static lg:w-64 flex flex-col
-      `}>
-        
-        {/* BRAND HEADER */}
-        <div className="flex flex-col items-center justify-center py-8 px-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-gradient-to-b dark:from-slate-900 dark:to-slate-950 relative">
-            <div 
-                onClick={() => handleTabChange('dashboard')}
-                className="flex flex-col items-center group transform transition-transform hover:scale-105 duration-300 cursor-pointer"
-            >
+      <aside className={`fixed inset-y-0 left-0 z-40 bg-slate-50 dark:bg-slate-900 border-r border-slate-300 dark:border-slate-800 transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} w-64 lg:translate-x-0 lg:static lg:h-full lg:w-64 flex flex-col`}>
+        <div className="flex flex-col items-center justify-center py-8 px-4 border-b border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-gradient-to-b dark:from-slate-900 dark:to-slate-950 relative shrink-0">
+            <div onClick={() => handleTabChange('dashboard')} className="flex flex-col items-center group transform transition-transform hover:scale-105 duration-300 cursor-pointer">
                 <Shield className="w-12 h-12 text-amber-500 dark:text-amber-400 mb-3 fill-amber-400/20 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]" />
-                <h1 className="text-5xl font-black text-amber-500 dark:text-amber-400 tracking-tighter leading-none drop-shadow-xl mb-4 font-sans">
-                    CCOS
-                </h1>
+                <h1 className="text-5xl font-black text-amber-500 dark:text-amber-400 tracking-tighter leading-none drop-shadow-xl mb-4 font-sans">CCOS</h1>
                 <div className="flex items-center gap-2">
-                     <div className="bg-white border border-slate-200 dark:border-0 px-2 py-0.5 rounded-[3px] h-7 flex items-center justify-center shadow-md">
-                        <span className="text-[8px] font-extrabold text-red-700 leading-none text-center tracking-tighter">UNILOG<br/>EXPRESS</span>
-                     </div>
-                     <div className="bg-white border border-slate-200 dark:border-0 px-2 py-0.5 rounded-[3px] h-7 flex items-center justify-center shadow-md">
-                        <span className="text-[8px] font-extrabold text-cyan-600 leading-none text-center tracking-tighter">4ELOS<br/>DISTRIB.</span>
-                     </div>
+                     <div className="bg-white border border-slate-200 dark:border-0 px-2 py-0.5 rounded-[3px] h-7 flex items-center justify-center shadow-md"><span className="text-[8px] font-extrabold text-red-700 leading-none text-center tracking-tighter">UNILOG<br/>EXPRESS</span></div>
+                     <div className="bg-white border border-slate-200 dark:border-0 px-2 py-0.5 rounded-[3px] h-7 flex items-center justify-center shadow-md"><span className="text-[8px] font-extrabold text-cyan-600 leading-none text-center tracking-tighter">4ELOS<br/>DISTRIB.</span></div>
                 </div>
             </div>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-500 hover:text-slate-900 dark:hover:text-white absolute top-2 right-2">
-                <X size={20} />
-            </button>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-500 hover:text-slate-900 dark:hover:text-white absolute top-2 right-2"><X size={20} /></button>
         </div>
         
-        {/* User Info Sidebar - CLICKABLE FOR EDIT */}
-        <div 
-            className="px-4 py-3 bg-slate-50 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors group relative"
-            onClick={() => setShowProfileModal(true)}
-            title="Clique para editar perfil"
-        >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center overflow-hidden bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700`}>
-                {user.photoURL ? (
-                    <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
-                ) : (
-                    <span className={`text-xs font-bold ${isAdmin ? 'text-amber-500' : 'text-blue-500'}`}>{user.name.charAt(0)}</span>
-                )}
+        <div className="px-4 py-3 bg-slate-100 dark:bg-slate-950/50 border-b border-slate-300 dark:border-slate-800 flex items-center gap-3 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-800/80 transition-colors group relative shrink-0" onClick={() => setShowProfileModal(true)}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
+                {user.photoURL ? <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" /> : <span className={`text-xs font-bold ${isAdmin ? 'text-amber-500' : 'text-blue-500'}`}>{user.name.charAt(0)}</span>}
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-slate-700 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{user.name}</p>
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">
-                    {user.jobTitle || (isAdmin ? 'Administrador' : 'Visualizador')}
-                </p>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">{user.jobTitle || (isAdmin ? 'Administrador' : isManager ? 'Gestor' : 'Operador')}</p>
             </div>
             <Settings size={14} className="text-slate-400 dark:text-slate-600 group-hover:text-slate-700 dark:group-hover:text-white transition-colors opacity-0 group-hover:opacity-100 absolute right-2" />
         </div>
 
-        <nav className="p-4 space-y-2 flex-1 overflow-y-auto">
-          <button 
-            onClick={() => handleTabChange('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <LayoutDashboard size={20} className="shrink-0" />
-            <span>Dashboard</span>
-          </button>
-
-          <button 
-            onClick={() => handleTabChange('cameras')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'cameras' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <Video size={20} className="shrink-0" />
-            <span>Câmeras</span>
-            {data.cameras.length > 0 && <span className="ml-auto text-xs bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded-full">{data.cameras.length}</span>}
-          </button>
-
-          <button 
-            onClick={() => handleTabChange('access')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'access' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <DoorClosed size={20} className="shrink-0" />
-            <span>Acessos</span>
-            {data.accessPoints.length > 0 && <span className="ml-auto text-xs bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded-full">{data.accessPoints.length}</span>}
-          </button>
-
-          <button 
-            onClick={() => handleTabChange('third-party')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'third-party' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <Briefcase size={20} className="shrink-0" />
-            <span>Status Terceirizados</span>
+        <nav className="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+          <button onClick={() => handleTabChange('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+            <LayoutDashboard size={20} className="shrink-0" /> <span>Dashboard</span>
           </button>
           
-          <button 
-            onClick={() => handleTabChange('organizer')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'organizer' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <Calendar size={20} className="shrink-0" />
-            <span>Agenda e Notas</span>
+          {/* TABS FOR ADMIN AND MANAGER */}
+          {(isAdmin || isManager) && (
+              <>
+                <button onClick={() => handleTabChange('access-management')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'access-management' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <Activity size={20} className="shrink-0" /> <span>Gestão de Acessos</span>
+                </button>
+                <button onClick={() => handleTabChange('heatmap')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'heatmap' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <Grid size={20} className="shrink-0" /> <span>Mapa de Calor</span>
+                </button>
+              </>
+          )}
+          
+          {/* THIRD PARTY FOR EVERYONE */}
+          <button onClick={() => handleTabChange('third-party')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'third-party' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+            <Briefcase size={20} className="shrink-0" /> <span>Status Terceirizados</span>
           </button>
 
-          <button 
-            onClick={() => handleTabChange('chat')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-          >
-            <MessageSquare size={20} className="shrink-0" />
-            <span>Chat da Equipe</span>
+          {/* MONITORING - Visible to ALL (Filtered internally for managers) */}
+          <button onClick={() => handleTabChange('cameras')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'cameras' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                <Video size={20} className="shrink-0" /> <span>Câmeras</span> {data.cameras.length > 0 && isAdmin && <span className="ml-auto text-xs bg-slate-300 dark:bg-slate-800 px-2 py-0.5 rounded-full">{data.cameras.length}</span>}
+          </button>
+          <button onClick={() => handleTabChange('access')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'access' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                <DoorClosed size={20} className="shrink-0" /> <span>Acessos</span> {data.accessPoints.length > 0 && isAdmin && <span className="ml-auto text-xs bg-slate-300 dark:bg-slate-800 px-2 py-0.5 rounded-full">{data.accessPoints.length}</span>}
           </button>
 
-          {/* Moved Central de Cadastro Button Here */}
-          {isAdmin && (
-            <button 
-              onClick={() => handleTabChange('registration')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'registration' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-            >
-              <PlusSquare size={20} className="shrink-0" />
-              <span>Central de Cadastro</span>
-            </button>
+          {/* HIDE OPERATIONAL TABS FROM MANAGERS */}
+          {!isManager && (
+              <>
+                {isAdmin ? (
+                    <button onClick={() => handleTabChange('task-management')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'task-management' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                        <ClipboardList size={20} className="shrink-0" /> <span>Gestão de Tarefas</span>
+                    </button>
+                ) : (
+                    <button onClick={() => handleTabChange('my-tasks')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'my-tasks' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                        <CheckSquare size={20} className="shrink-0" /> <span>Minhas Tarefas</span>
+                    </button>
+                )}
+
+                <button onClick={() => handleTabChange('pendencies')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'pendencies' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <Mail size={20} className="shrink-0" /> <span>Pendências E-mail</span>
+                </button>
+                <button onClick={() => handleTabChange('organizer')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'organizer' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <Calendar size={20} className="shrink-0" /> <span>Agenda e Notas</span>
+                </button>
+                <button onClick={() => handleTabChange('chat')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'chat' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <MessageSquare size={20} className="shrink-0" /> <span>Chat da Equipe</span>
+                </button>
+                
+                <button onClick={() => handleTabChange('registration')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'registration' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                    <PlusSquare size={20} className="shrink-0" /> <span>Central de Cadastro</span>
+                </button>
+              </>
           )}
 
-          {/* ADMIN SECTIONS */}
           {isAdmin && (
-            <div className="pt-4 mt-4 border-t border-slate-200 dark:border-slate-800">
+            <div className="pt-4 mt-4 border-t border-slate-300 dark:border-slate-800 shrink-0">
                 <p className="px-4 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">Administração</p>
-                
-                <button 
-                  onClick={() => handleTabChange('data')}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-                >
-                  <FileSpreadsheet size={20} className="shrink-0" />
-                  <span>Fonte de Dados</span>
+                <button onClick={() => handleTabChange('data')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'data' ? 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                  <FileSpreadsheet size={20} className="shrink-0" /> <span>Fonte de Dados</span>
                 </button>
-
-                <button 
-                  onClick={() => handleTabChange('users')}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}
-                >
-                  <Users size={20} className="shrink-0" />
-                  <span>Gerenciar Usuários</span>
+                <button onClick={() => handleTabChange('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'}`}>
+                  <Users size={20} className="shrink-0" /> <span>Gerenciar Usuários</span>
                 </button>
             </div>
           )}
         </nav>
         
-        {/* Footer Actions */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
-           <button 
-               onClick={handleLogout}
-               className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-all text-sm"
-            >
-               <LogOut size={16} className="shrink-0" />
-               <span>Sair</span>
+        <div className="p-4 border-t border-slate-300 dark:border-slate-800 space-y-2 shrink-0">
+           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-all text-sm">
+               <LogOut size={16} className="shrink-0" /> <span>Sair</span>
            </button>
         </div>
       </aside>
 
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div 
-            className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-sm"
-            onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />}
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 dark:bg-slate-950 w-full relative">
-        
-        {/* Header */}
-        <header className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20">
+      <main className="flex-1 flex flex-col h-full overflow-hidden bg-slate-200 dark:bg-slate-900 w-full relative">
+        <header className="h-16 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-300 dark:border-slate-800 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20 shrink-0">
           <div className="flex items-center gap-3">
-             <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                <Menu size={24} />
-             </button>
-             {/* Mobile Logo Simplified */}
-             <div 
-                onClick={() => handleTabChange('dashboard')}
-                className="flex items-center gap-2 lg:hidden cursor-pointer"
-             >
+             <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"><Menu size={24} /></button>
+             <div onClick={() => handleTabChange('dashboard')} className="flex items-center gap-2 lg:hidden cursor-pointer">
                 <Shield className="w-5 h-5 text-amber-500 dark:text-amber-400 fill-amber-400/20" />
                 <span className="text-xl font-black text-amber-500 dark:text-amber-400 tracking-tighter">CCOS</span>
              </div>
           </div>
-          
           <div className="flex items-center gap-4 relative">
-             <div className="hidden sm:flex px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 items-center gap-2">
+             <div className="hidden sm:flex px-3 py-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 Atualizado: {data.lastSync}
              </div>
-             
-             {/* Theme Toggle */}
-             <button
-                onClick={toggleTheme}
-                className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
-                title={theme === 'dark' ? "Modo Claro" : "Modo Escuro"}
-             >
-                 {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-             </button>
-
-             {/* Notification Bell */}
+             <button onClick={() => setShowTour(true)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors" title="Manual do Sistema"><HelpCircle size={20} /></button>
+             <button onClick={toggleTheme} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors">{theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}</button>
              <div className="relative">
-                <button 
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="relative p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors focus:outline-none"
-                >
-                    <Bell size={20} />
-                    {unreadCount > 0 && (
-                       <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white border border-white dark:border-slate-900">
-                           {unreadCount > 9 ? '9+' : unreadCount}
-                       </span>
-                    )}
-                </button>
-
-                {/* Dropdown Menu */}
+                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full transition-colors focus:outline-none"><Bell size={20} />{unreadCount > 0 && <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[9px] font-bold text-white border border-white dark:border-slate-900">{unreadCount > 9 ? '9+' : unreadCount}</span>}</button>
                 {showNotifications && (
                     <>
-                        <div 
-                            className="fixed inset-0 z-40" 
-                            onClick={() => setShowNotifications(false)}
-                        />
+                        <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
                         <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                            <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50">
-                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Notificações</span>
-                                {notifications.length > 0 && (
-                                    <button 
-                                        onClick={markAllRead}
-                                        className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
-                                    >
-                                        <Check size={12} /> Marcar lidas
-                                    </button>
-                                )}
-                            </div>
-                            <div className="max-h-[300px] overflow-y-auto">
-                                {notifications.length === 0 ? (
-                                    <div className="p-8 text-center text-slate-500 text-xs">
-                                        <Bell size={24} className="mx-auto mb-2 opacity-30" />
-                                        Nenhuma notificação recente
-                                    </div>
-                                ) : (
-                                    notifications.map((note) => (
-                                        <div 
-                                            key={note.id} 
-                                            className={`p-3 border-b border-slate-200/50 dark:border-slate-800/50 last:border-0 hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors flex gap-3 relative group
-                                                ${!note.read ? 'bg-blue-50/50 dark:bg-slate-800/20' : ''}
-                                            `}
-                                        >
-                                            <div className={`mt-1 shrink-0`}>
-                                                {note.type === 'alert' ? (
-                                                    <AlertCircle size={16} className="text-rose-500" />
-                                                ) : (
-                                                    <CheckCircle2 size={16} className="text-emerald-500" />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className={`text-xs ${!note.read ? 'text-slate-800 dark:text-slate-200 font-medium' : 'text-slate-500 dark:text-slate-400'}`}>
-                                                    {note.message}
-                                                </p>
-                                                <span className="text-[10px] text-slate-400 dark:text-slate-600 mt-1 block">{note.timestamp}</span>
-                                            </div>
-                                            <button 
-                                                onClick={() => removeNotification(note.id)}
-                                                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400 transition-all"
-                                                title="Remover"
-                                            >
-                                                <X size={12} />
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
+                            <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950/50"><span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Notificações</span>{unreadCount > 0 && <button onClick={markAllRead} className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"><Check size={12} /> Marcar lidas</button>}</div>
+                            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">{notifications.length === 0 ? <div className="p-8 text-center text-slate-500 text-xs"><Bell size={24} className="mx-auto mb-2 opacity-30" /> Nenhuma notificação</div> : notifications.map((note) => (<div key={note.id} onClick={() => { if (note.linkTo === 'chat') handleTabChange('chat'); if (!note.read) update(ref(db, `notifications/${user.uid}/${note.id}`), { read: true }); setShowNotifications(false); }} className={`p-3 border-b border-slate-200/50 dark:border-slate-800/50 last:border-0 hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors flex gap-3 relative group cursor-pointer border-l-4 ${!note.read ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''} ${note.type === 'alert' ? 'border-l-rose-500' : note.type === 'success' ? 'border-l-emerald-500' : 'border-l-blue-500'}`}><div className="mt-1 shrink-0">{note.type === 'message' ? <MessageSquare size={16} className="text-blue-500" /> : note.type === 'alert' ? <AlertCircle size={16} className="text-rose-500" /> : <CheckCircle2 size={16} className="text-emerald-500" />}</div><div className="flex-1 min-w-0"><p className={`text-xs ${!note.read ? 'text-slate-800 dark:text-white font-bold' : 'text-slate-500 dark:text-slate-400'}`}>{note.message}</p><span className="text-[10px] text-slate-400 dark:text-slate-600 mt-1 block">{new Date(note.timestamp).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</span></div><button onClick={(e) => { e.stopPropagation(); removeNotification(note.id); }} className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-500 dark:text-slate-600 dark:hover:text-rose-400 transition-all" title="Remover"><X size={12} /></button></div>))}</div>
                         </div>
                     </>
                 )}
@@ -745,184 +476,68 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Scrollable View Area */}
         <div className="flex-1 overflow-auto p-4 sm:p-6 scroll-smooth">
           <div className="max-w-7xl mx-auto space-y-6 pb-10">
-            
-            {activeTab === 'dashboard' && <Dashboard data={data} thirdPartyWorkers={thirdPartyWorkers} />}
-            
-            {activeTab === 'cameras' && (
-                <CameraList 
-                  cameras={data.cameras} 
-                  onToggleStatus={handleToggleCameraStatus}
-                  onAdd={isAdmin ? handleAddCamera : undefined}
-                  onEdit={isAdmin ? handleEditCamera : undefined}
-                  onDelete={isAdmin ? handleDeleteCamera : undefined}
-                  readOnly={!isAdmin} 
-                />
-            )}
-            
-            {activeTab === 'access' && (
-                <AccessControlList 
-                    accessPoints={data.accessPoints} 
-                    onToggleStatus={handleToggleAccessStatus}
-                    onAdd={isAdmin ? handleAddAccess : undefined}
-                    onEdit={isAdmin ? handleEditAccess : undefined}
-                    onDelete={isAdmin ? handleDeleteAccess : undefined}
-                    readOnly={!isAdmin}
-                />
-            )}
-            
-            {activeTab === 'third-party' && (
-                <ThirdPartyStatus 
-                    workers={thirdPartyWorkers}
-                    setWorkers={setThirdPartyWorkers}
-                />
-            )}
-            
-            {activeTab === 'organizer' && (
-                <Organizer 
-                    notes={data.notes}
-                    meetings={data.meetings}
-                    events={data.events}
-                    onAddNote={handleAddNote}
-                    onToggleNote={handleToggleNote}
-                    onDeleteNote={handleDeleteNote}
-                    onEditNote={handleEditNote}
-                    onAddMeeting={handleAddMeeting}
-                    onDeleteMeeting={handleDeleteMeeting}
-                    onAddEvent={handleAddEvent}
-                    onDeleteEvent={handleDeleteEvent}
-                />
-            )}
+            <Suspense fallback={<LoadingFallback />}>
+                {activeTab === 'dashboard' && <Dashboard data={data} thirdPartyWorkers={thirdPartyWorkers} onSetWarehouseStatus={handleSetWarehouseStatus} currentUser={user} />}
+                
+                {/* Renders for Manager and Admin */}
+                {activeTab === 'access-management' && <AccessManagement accessPoints={data.accessPoints} thirdPartyWorkers={thirdPartyWorkers} currentUser={user} />}
+                {activeTab === 'heatmap' && <Heatmap thirdPartyWorkers={thirdPartyWorkers} currentUser={user} />}
+                {activeTab === 'third-party' && <ThirdPartyStatus workers={thirdPartyWorkers} currentUser={user} />}
 
-            {activeTab === 'chat' && user && (
-                <Chat currentUser={user} />
-            )}
+                {/* VISIBLE FOR ADMIN, OPERATOR AND MANAGER (Filtered for Manager) */}
+                {activeTab === 'cameras' && <CameraList cameras={data.cameras} onToggleStatus={handleToggleCameraStatus} onSetWarehouseStatus={handleSetWarehouseStatus} onAdd={isAdmin ? handleAddCamera : undefined} onEdit={isAdmin ? handleEditCamera : undefined} onDelete={isAdmin ? handleDeleteCamera : undefined} readOnly={!isAdmin} allowedWarehouses={isManager ? user.allowedWarehouses : undefined} />}
+                {activeTab === 'access' && <AccessControlList accessPoints={data.accessPoints} onToggleStatus={handleToggleAccessStatus} onAdd={isAdmin ? handleAddAccess : undefined} onEdit={isAdmin ? handleEditAccess : undefined} onDelete={isAdmin ? handleDeleteAccess : undefined} readOnly={!isAdmin} allowedWarehouses={isManager ? user.allowedWarehouses : undefined} />}
 
-            {activeTab === 'registration' && isAdmin && (
-                <Registration 
-                    onAddCamera={handleAddCamera}
-                    onAddAccess={handleAddAccess}
-                    onAddDocument={handleAddDocument}
-                    onDeleteDocument={handleDeleteDocument}
-                    documents={data.documents}
-                />
-            )}
-            
-            {activeTab === 'data' && isAdmin && (
-              <Importer 
-                onImport={handleImportData}
-                onReset={handleFullReset}
-                initialCameraCsv=""
-                initialAccessCsv=""
-              />
-            )}
+                {/* Restricted Renders (Not for Manager) */}
+                {!isManager && (
+                    <>
+                        {activeTab === 'pendencies' && user && <EmailPendencies currentUser={user} />}
+                        {activeTab === 'organizer' && <Organizer notes={data.notes} meetings={data.meetings} events={data.events} onAddNote={handleAddNote} onToggleNote={handleToggleNote} onDeleteNote={handleDeleteNote} onEditNote={handleEditNote} onAddMeeting={handleAddMeeting} onDeleteMeeting={handleDeleteMeeting} onAddEvent={handleAddEvent} onDeleteEvent={handleDeleteEvent} />}
+                        {activeTab === 'chat' && user && <Chat currentUser={user} />}
+                        {activeTab === 'task-management' && isAdmin && <TaskManagement currentUser={user} />}
+                        {activeTab === 'my-tasks' && user && <MyTasks currentUser={user} />}
+                        {activeTab === 'registration' && <Registration onAddCamera={handleAddCamera} onAddAccess={handleAddAccess} onAddDocument={handleAddDocument} onDeleteDocument={handleDeleteDocument} documents={data.documents} userRole={user.role} />}
+                    </>
+                )}
 
-            {activeTab === 'users' && isAdmin && (
-                <UserManagement />
-            )}
-
+                {activeTab === 'data' && isAdmin && <Importer onImport={handleImportData} onImportThirdParty={handleSaveThirdPartyWorkers} onReset={handleFullReset} />}
+                {activeTab === 'users' && isAdmin && <UserManagement currentUser={user} />}
+            </Suspense>
           </div>
         </div>
       </main>
 
-      {/* GLOBAL PROFILE EDIT MODAL */}
+      {/* Profile Modal */}
       {showProfileModal && (
             <div className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-sm flex justify-end animate-fade-in">
-                <div className="w-full max-w-md bg-white dark:bg-slate-900 h-full border-l border-slate-200 dark:border-slate-800 shadow-2xl overflow-y-auto relative">
-                    <button 
-                        onClick={() => setShowProfileModal(false)}
-                        className="absolute top-4 right-4 z-20 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
-                    >
-                        <X size={20} />
-                    </button>
-
-                    {/* Banner Section */}
+                <div className="w-full max-w-md bg-white dark:bg-slate-900 h-full border-l border-slate-300 dark:border-slate-800 shadow-2xl overflow-y-auto relative">
+                    <button onClick={() => setShowProfileModal(false)} className="absolute top-4 right-4 z-20 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"><X size={20} /></button>
                     <div className="relative h-40 bg-gradient-to-r from-blue-900 to-slate-900">
-                        {editProfile.bannerURL ? (
-                            <img src={editProfile.bannerURL} alt="Banner" className="w-full h-full object-cover opacity-80" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center opacity-30">
-                                <ImageIcon size={48} className="text-white" />
-                            </div>
-                        )}
-                        <label className="absolute bottom-2 right-2 p-2 bg-black/50 hover:bg-black/70 rounded-full cursor-pointer text-white transition-colors" title="Alterar Capa">
-                            <CameraIcon size={16} />
-                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleProfileImageUpload(e, 'bannerURL')} />
-                        </label>
+                        {editProfile.bannerURL ? <img src={editProfile.bannerURL} alt="Banner" className="w-full h-full object-cover opacity-80" /> : <div className="w-full h-full flex items-center justify-center opacity-30"><ImageIcon size={48} className="text-white" /></div>}
+                        <label className="absolute bottom-2 right-2 p-2 bg-black/50 hover:bg-black/70 rounded-full cursor-pointer text-white transition-colors" title="Alterar Capa"><CameraIcon size={16} /><input type="file" className="hidden" accept="image/*" onChange={(e) => handleProfileImageUpload(e, 'bannerURL')} /></label>
                     </div>
-
-                    {/* Avatar Section */}
                     <div className="px-6 relative -mt-16 mb-4 flex flex-col items-center">
                          <div className="relative group">
-                            {editProfile.photoURL ? (
-                                <img src={editProfile.photoURL} alt="Avatar" className="w-32 h-32 rounded-full object-cover border-4 border-white dark:border-slate-900 shadow-xl" />
-                            ) : (
-                                <div className="w-32 h-32 rounded-full bg-slate-200 dark:bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-slate-400 font-bold text-4xl shadow-xl">
-                                    {editProfile.name.charAt(0).toUpperCase()}
-                                </div>
-                            )}
-                            <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity" title="Alterar Foto">
-                                <CameraIcon size={24} />
-                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleProfileImageUpload(e, 'photoURL')} />
-                            </label>
+                            {editProfile.photoURL ? <img src={editProfile.photoURL} alt="Avatar" className="w-32 h-32 rounded-full object-cover border-4 border-white dark:border-slate-900 shadow-xl" /> : <div className="w-32 h-32 rounded-full bg-slate-200 dark:bg-slate-800 border-4 border-white dark:border-slate-900 flex items-center justify-center text-slate-400 font-bold text-4xl shadow-xl">{(editProfile.name || '?').charAt(0).toUpperCase()}</div>}
+                            <label className="absolute inset-0 flex items-center justify-center bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity" title="Alterar Foto"><CameraIcon size={24} /><input type="file" className="hidden" accept="image/*" onChange={(e) => handleProfileImageUpload(e, 'photoURL')} /></label>
                          </div>
                     </div>
-
-                    {/* Form Fields */}
                     <div className="px-6 pb-8 space-y-5">
                         <h3 className="text-xl font-bold text-slate-800 dark:text-white text-center mb-6">Editar Meu Perfil</h3>
-                        
-                        <div>
-                            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1.5">
-                                <UserIcon size={14} /> Nome Completo
-                            </label>
-                            <input 
-                                type="text" 
-                                value={editProfile.name}
-                                onChange={e => setEditProfile({...editProfile, name: e.target.value})}
-                                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"
-                            />
+                        <div><label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1.5"><UserIcon size={14} /> Nome Completo</label><input type="text" value={editProfile.name} onChange={e => setEditProfile({...editProfile, name: e.target.value})} className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none" /></div>
+                        <div><label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1.5"><Briefcase size={14} /> Cargo / Função</label><input type="text" placeholder="Ex: Supervisor Operacional" value={editProfile.jobTitle} onChange={e => setEditProfile({...editProfile, jobTitle: e.target.value})} className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none" /></div>
+                         <div><label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1.5"><Mail size={14} /> Bio / Status</label><textarea placeholder="Escreva algo sobre você..." value={editProfile.bio} onChange={e => setEditProfile({...editProfile, bio: e.target.value})} className="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none h-24 resize-none" /></div>
+                        <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                            <button onClick={() => setShowPasswordChange(!showPasswordChange)} className="flex items-center gap-2 text-xs text-blue-500 hover:text-blue-400 font-medium mb-3"><Lock size={14} /> {showPasswordChange ? 'Cancelar Alteração de Senha' : 'Alterar Senha'}</button>
+                            {showPasswordChange && (<div className="space-y-3 bg-slate-50 dark:bg-slate-950/50 p-4 rounded-lg border border-slate-200 dark:border-slate-800"><div><label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Nova Senha</label><input type="password" placeholder="Mínimo 6 caracteres" value={passwordForm.newPassword} onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})} className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded p-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none" /></div><div><label className="block text-[10px] text-slate-500 uppercase font-bold mb-1">Confirmar Senha</label><input type="password" placeholder="Repita a nova senha" value={passwordForm.confirmPassword} onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})} className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded p-2 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none" /></div><button onClick={handleChangePassword} disabled={passwordLoading} className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded text-xs transition-colors flex items-center justify-center gap-2">{passwordLoading ? <Loader2 className="animate-spin" size={14} /> : 'Atualizar Senha'}</button></div>)}
                         </div>
-
-                        <div>
-                            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1.5">
-                                <Briefcase size={14} /> Cargo / Função (Exibido na Sidebar)
-                            </label>
-                            <input 
-                                type="text" 
-                                placeholder="Ex: Supervisor Operacional"
-                                value={editProfile.jobTitle}
-                                onChange={e => setEditProfile({...editProfile, jobTitle: e.target.value})}
-                                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"
-                            />
-                        </div>
-
-                         <div>
-                            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1.5">
-                                <Mail size={14} /> Bio / Status
-                            </label>
-                            <textarea 
-                                placeholder="Escreva algo sobre você..."
-                                value={editProfile.bio}
-                                onChange={e => setEditProfile({...editProfile, bio: e.target.value})}
-                                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none h-24 resize-none"
-                            />
-                        </div>
-
-                        <button 
-                            onClick={handleSaveProfile}
-                            disabled={profileSaving}
-                            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg flex items-center justify-center gap-2 mt-4"
-                        >
-                            {profileSaving ? 'Salvando...' : <><Save size={18} /> Salvar Alterações</>}
-                        </button>
+                        <button onClick={handleSaveProfile} disabled={profileSaving} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg flex items-center justify-center gap-2 mt-4">{profileSaving ? 'Salvando...' : <><Save size={18} /> Salvar Alterações</>}</button>
                     </div>
                 </div>
             </div>
       )}
-
     </div>
   );
 };

@@ -5,9 +5,10 @@ import {
   signOut, 
   onAuthStateChanged, 
   getAuth,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword,
+  updatePassword
 } from 'firebase/auth';
-import { ref, get, set, remove, update, onValue, Unsubscribe } from 'firebase/database';
+import { ref, get, set, remove, update, onValue, Unsubscribe, query, orderByChild, equalTo } from 'firebase/database';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { User, UserRole } from '../types';
 
@@ -38,6 +39,7 @@ class AuthService {
                 name: userData.name || 'Usuário',
                 role: userData.role || 'viewer',
                 status: userData.status || 'active',
+                allowedWarehouses: userData.allowedWarehouses || [], // CORREÇÃO: Carregar permissões
                 photoURL: userData.photoURL || '',
                 bannerURL: userData.bannerURL || '',
                 jobTitle: userData.jobTitle || '',
@@ -52,7 +54,8 @@ class AuthService {
                   email: firebaseUser.email || '',
                   name: firebaseUser.displayName || 'Usuário (Visitante)',
                   role: isOwner ? 'admin' : 'viewer',
-                  status: 'active'
+                  status: 'active',
+                  allowedWarehouses: []
               };
               
               callback(memoryUser);
@@ -93,9 +96,17 @@ class AuthService {
     await update(userRef, data);
   }
 
+  async updateUserPassword(newPassword: string): Promise<void> {
+    if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPassword);
+    } else {
+        throw new Error("Usuário não autenticado.");
+    }
+  }
+
   // --- Admin Methods (Protected by Database Rules) ---
 
-  async addUser(newUser: { email: string; password: string; name: string; role: UserRole }): Promise<void> {
+  async addUser(newUser: { email: string; password: string; name: string; role: UserRole; allowedWarehouses?: string[] }): Promise<void> {
     // Cria uma instância secundária do App para criar o Auth User
     // sem deslogar o Admin atual.
     const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
@@ -112,6 +123,7 @@ class AuthService {
         email: newUser.email,
         role: newUser.role,
         status: 'active',
+        allowedWarehouses: newUser.allowedWarehouses || [],
         createdAt: new Date().toISOString(),
         photoURL: '',
         jobTitle: 'Membro da Equipe',
@@ -128,7 +140,57 @@ class AuthService {
   }
 
   async removeUser(uid: string): Promise<void> {
+    // 1. Remove User Profile
     await remove(ref(db, `users/${uid}`));
+
+    // 2. Remove Private Messages involving this user (Cascade Delete)
+    try {
+        const privateMsgsRef = ref(db, 'private_messages');
+        const snapshot = await get(privateMsgsRef);
+        if (snapshot.exists()) {
+            const updates: any = {};
+            snapshot.forEach((child) => {
+                if (child.key && child.key.includes(uid)) {
+                    updates[child.key] = null;
+                }
+            });
+            if (Object.keys(updates).length > 0) {
+                await update(privateMsgsRef, updates);
+            }
+        }
+    } catch (e) {
+        console.error("Error cleaning private messages:", e);
+    }
+
+    // 3. Remove Public Messages sent by this user
+    try {
+        const publicMsgsQuery = query(ref(db, 'messages'), orderByChild('senderId'), equalTo(uid));
+        const pubSnapshot = await get(publicMsgsQuery);
+        if (pubSnapshot.exists()) {
+            const updates: any = {};
+            pubSnapshot.forEach((child) => {
+                updates[child.key as string] = null;
+            });
+            await update(ref(db, 'messages'), updates);
+        }
+    } catch (e) {
+        console.error("Error cleaning public messages:", e);
+    }
+
+    // 4. Remove Tasks Assigned to this user
+    try {
+        const tasksQuery = query(ref(db, 'tasks'), orderByChild('assignedToId'), equalTo(uid));
+        const taskSnapshot = await get(tasksQuery);
+        if (taskSnapshot.exists()) {
+            const updates: any = {};
+            taskSnapshot.forEach((child) => {
+                updates[child.key as string] = null;
+            });
+            await update(ref(db, 'tasks'), updates);
+        }
+    } catch (e) {
+        console.error("Error cleaning tasks:", e);
+    }
   }
 
   async listUsers(): Promise<User[]> {
@@ -139,7 +201,10 @@ class AuthService {
       const data = snapshot.val();
       return Object.keys(data).map(key => ({
         uid: key,
-        ...data[key]
+        ...data[key],
+        name: data[key].name || 'Sem Nome', 
+        email: data[key].email || '',
+        allowedWarehouses: data[key].allowedWarehouses || []
       }));
     }
     return [];

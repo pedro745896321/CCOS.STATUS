@@ -1,33 +1,197 @@
 
 import React, { useRef, useState } from 'react';
-import { FileSpreadsheet, RotateCcw, AlertCircle, Power, Upload, FileUp, Video, DoorClosed, Download, Save } from 'lucide-react';
-import { Camera, AccessPoint, Status } from '../types';
+import { FileSpreadsheet, RotateCcw, AlertCircle, Power, Upload, Video, DoorClosed, Save, Briefcase, FileUp, AlertTriangle, X } from 'lucide-react';
+import { Camera, AccessPoint, Status, ProcessedWorker } from '../types';
+
+// --- CONFIGURAÇÃO TERCEIROS ---
+// A lista abaixo é usada apenas para validação em outras telas, não restringe a importação aqui.
+const VALID_COMPANIES = ['B11', 'MULT', 'MPI', 'FORMA', 'SUPERA LOG', 'MJM', 'PRIMUS', 'PRAYLOG'];
+
+const VALID_UNITS = [
+    { 
+        id: 'GALPÃO G2', 
+        keywords: [
+            // Códigos LF Específicos (Prioridade Alta)
+            'G216LF', 'G213LF', 'G203LF', 'G208LF', 'G207LF', 
+            'G205LF', 'G210LF', 'G215LF', 'G201LF', 'G214LF', 
+            'G212LF', 'G206LF', 'G204LF', 'G209LF', 'G217LF', 
+            'G211LF', 'G202LF',
+            // Nomes de Dispositivos Específicos
+            'SALA DE DESCANSO G2', 'CF MERCO-2', 'CONTROLADO ZYDUS', 'CONTROLADO PRATI',
+            'SAIDA CATRACA G2', 'ENTRADA CATRACA G2', 'CF PFS', 'CF MERCO',
+            'CAMARA FRIA BIOCON', 'SERVIDOR G2', 'RG SOLUÇÕES', 'RG SOLUCOES',
+            'GAIOLA 1', 'PRESTIGE MEZ', 'TORNIQUETE SAIDA', 'TORNIQUETE ENTRADA',
+            'PRESTIGE', 'ZYDUS', 'BIOCON', 'PRATI', 'MERCO',
+            // Genérico G2 (Baixa prioridade, mas abrangente)
+            'G2'
+        ] 
+    },
+    { 
+        id: 'GALPÃO G3 / MATRIZ', 
+        keywords: [
+            // Códigos LF Específicos G3
+            'G315LF', 'G313LF', 'G311LF', 'G307LF', 'G306LF', 
+            'G302LF', 'G305LF', 'G309LF', 'G316LF', 'G314LF', 
+            'G312LF', 'G304LF', 'G301LF', 'G310LF', 'G308LF', 
+            'G303LF',
+            // Nomes de Dispositivos Específicos G3
+            'SALA MYLAN', 'MYLAN IMPORTADORA', 'CAMERA FRIA MYLAN', 'CONTROLADO ASPEN',
+            'MYLAN DISTRIBUIDORA', 'CF MYLAN', 'CF ASPEN', 'CORPORATIVO MATRIZ',
+            'ENTRADA G3 MYLAN', 'ENTRADA TORNIQUETE G3', 'SAIDA TORNIQUETE G3',
+            'ENTRADA G3 MATRIZ', 'SERVIDOR G3', 'ADM G3 MATRIZ', 'RECEPÇÃO G3',
+            'RECEPCAO G3', 'CONTROLE DE ACESSO CCOS', 'CCOS G3',
+            // Genéricos
+            'G3', 'MATRIZ', 'CORPORATIVO'
+        ],
+        exclude: ['LSP']
+    },
+    { 
+        id: 'GALPÃO G5 (MD6)', 
+        keywords: [
+            // Códigos LF Específicos G5
+            'G526LF', 'G503LF', 'G517LF', 'G515LF', 'G505LF', 
+            'G519LF', 'G513LF', 'G524LF', 'G521LF', 'G509LF', 
+            'G508LF', 'G507LF', 'G512LF', 'G520LF', 'G518LF', 
+            'G516LF', 'G514LF', 'G525LF', 'G506LF', 'G501LF', 
+            'G523LF', 'G522LF', 'G511LF', 'G510LF', 'G502LF', 
+            'G504LF',
+            // Nomes de Dispositivos Específicos G5
+            'VESTIARIO FEMININO MD 6', 'VESTIARIO MASCULINO MD 09', 'GAIOLA SERVIER',
+            'AC MEZANINO MD 8', 'CONTROLADO BIOCHIMICO', 'CONTROLADO CELLERA',
+            'CONTROLADO SERVIER', 'CONTROLE DE ACESSO MD 5', 'CONTROLE DE ACESSO MD 6',
+            'CONTROLE DE ACESSO MD 7', 'CONTROLE DE ACESSO MD 8', 'SAIDA MD 4',
+            'ENTRADA MD4', 'ENTRADA CATRATA MD 9', 'SAIDA CATRATA MD 9',
+            // Genéricos
+            'G5', 'MD6', 'MD 6', 'TERABYTE'
+        ] 
+    },
+    { 
+        id: 'UNIDADE SP-IP', 
+        keywords: [
+            // Códigos LF Específicos SP (Prioridade Máxima)
+            'IP06LF', 'IP04LF', 'IP07LF', 'IP01LF', 'IP02LF', 'IP05LF', 'IP08LF', 'IP03LF',
+            'SP-IP06LF', 'SP-IP04LF', 'SP-IP07LF', 'SP-IP01LF', 'SP-IP02LF', 'SP-IP05LF', 'SP-IP08LF', 'SP-IP03LF',
+            // Nomes
+            'HOSPDROGAS', 'NEURAXPHARM', 'SERVIDOR SP', 'TORNIQUETE SP', 'CATRACA ENTRADA SP', 'CATRACA SAIDA SP',
+            // Genéricos
+            'SP-IP', 'SP IP', 'ITAPEVI', 'SP - IP'
+        ] 
+    },
+    {
+        id: 'MERITI',
+        keywords: [
+            // Códigos LF Específicos MERITI/SJM
+            'SJM10LF', 'SJM08LF', 'SJM15LF', 'SJM14LF', 'SJM12LF', 
+            'SJM05LF', 'SJM02LF', 'SJM07LF', 'SJM04LF', 'SJM03LF', 
+            'SJM01LF', 'SJM09LF', 'SJM13LF', 'SJM11LF', 'SJM06LF',
+            // Nomes Específicos
+            'SAIDA CATRACA EXPRESSA', 'ENTRADA CATRACA EXPRESSA', 'ENTRADA GALPÃO LATERAL', 'SAIDA GALPÃO LATERAL',
+            'ENTRADA BSB', 'SAIDA BSB', 'SAIDA GRADIL EXPRESSA', 'ENTRADA CATRACA UNILOG MERITI', 
+            'ENTRADA MEZANINO MERITI', 'SAIDA MEZANINO MERITI', 'SAIDA CATRACA UNILOG MERITI', 
+            'ENTRADA GRADIL EXPRESSA', 'CONTROLADO EXPRESSA', 'ALTO VALOR EXPRESSA', 'CAMARA FRIA EXPRESSA',
+            // Genéricos
+            'MERITI', 'UNILOG MERITI', 'UNILOG EXPRESS', 'SJM'
+        ]
+    },
+    { 
+        id: 'EXPRESSA SJM', 
+        keywords: [
+            'EXPRESSA', 'SÃO JOSÉ', 'SAO JOSE', 'LATERAL', 'SJ', 'SJC',
+            'EXPRESSA-SJM08LF', 'EXPRESSA-SJM10LF', 'LATERAL-SJM15LF'
+        ] 
+    },
+    { 
+        id: 'PAVUNA', 
+        keywords: [
+            // Códigos LF Específicos Pavuna
+            'PV01LF', 'PV02LF', 'PV03LF',
+            'PAVUNA-PV01LF', 'PAVUNA-PV02LF', 'PAVUNA-PV03LF',
+            // Nomes Específicos
+            'SAIDA CATRACA PAVUNA', 'ENTRADA CATRACA PAVUNA', 'SERVIDOR PAVUNA',
+            // Genéricos
+            'PAVUNA', 'PV', 'UNILOG PAVUNA'
+        ] 
+    },
+    { 
+        id: 'GALPÃO 4 ELOS ES', 
+        keywords: [
+            // Códigos LF Específicos G4 ES
+            'G1004LF', 'G1001LF', 'G1003LF',
+            // Nomes Específicos
+            'VESTIARIO FEMININO 4 ELOS', 'ENTRADA CATRACA 4 ELOS', 'SAIDA CATRACA 4ELOS', 'VESTIARIO MASCULINO 4ELOS',
+            // Genéricos
+            '4 ELOS ES', '4ELOS ES', '4ELLOS ES', 'GA-G4', 'G4'
+        ] 
+    },
+    { 
+        id: 'GALPÃO 4 ELOS RJ', 
+        keywords: [
+            // Códigos LF Específicos RJ
+            '4E03LF', '4E02LF', '4E01LF',
+            // Nomes Específicos
+            'ENTRADA MEZANINO 4ELOS RJ', 'CATRACA ENTRADA 4ELOS RJ', 'CATRACA SAIDA 4ELOS RJ', 'REFEITORIO MEZANINO',
+            // Genéricos
+            '4 ELOS RJ', 'ELOS RJ', '4ELOS RJ'
+        ] 
+    },
+    { 
+        id: 'GALPÃO LSP', 
+        keywords: ['LSP', 'LSP01', 'LSP02', 'LSP01LF', 'LSP02LF'] 
+    }
+];
+
+interface RawRow {
+    'Tipo de evento'?: string;
+    'Eventos'?: string;
+    'Hora'?: string;
+    'Data'?: string;
+    'Date'?: string;
+    'Ambiente'?: string;
+    'Ponto de Acesso'?: string;
+    'Tipo de ponto de acesso'?: string;
+    'Pessoa'?: string;
+    'ID'?: string;
+    'Grupo de pessoas'?: string;
+    'Status de Entrada/Saída'?: string;
+    [key: string]: any;
+}
 
 interface ImporterProps {
   onImport: (cameras: Camera[], accessPoints: AccessPoint[]) => void;
+  onImportThirdParty: (workers: ProcessedWorker[]) => void;
   onReset: () => void;
   initialCameraCsv?: string;
   initialAccessCsv?: string;
   initialMode?: boolean;
 }
 
-// Helper to normalize warehouse names based on content (Moved here)
-const normalizeWarehouse = (rawWarehouse: string | null, location: string | null, module: string | null): string => {
-    const textToCheck = ((rawWarehouse || '') + ' ' + (location || '') + ' ' + (module || '')).toUpperCase();
+// Helper to normalize warehouse names based on content
+const normalizeWarehouse = (rawWarehouse: string | null, location: string | null, module: string | null, name: string | null): string => {
+    const textToCheck = ((rawWarehouse || '') + ' ' + (location || '') + ' ' + (module || '') + ' ' + (name || '')).toUpperCase();
+    
+    // HARD CODES (Highest Priority)
+    if (textToCheck.includes('4E01LF') || textToCheck.includes('4E02LF') || textToCheck.includes('4E03LF')) return '4 ELOS RJ';
+    if (textToCheck.includes('IP0') || textToCheck.includes('IP1')) return 'SP (ITAPEVI)';
+    if (textToCheck.includes('SJM')) return 'UNILOG MERITI';
+    if (textToCheck.includes('PV01') || textToCheck.includes('PV02') || textToCheck.includes('PV03')) return 'UNILOG PAVUNA';
+
+    // KEYWORDS
     if (textToCheck.includes('MERITI')) return 'UNILOG MERITI';
     if (textToCheck.includes('4ELLOS ES') || textToCheck.includes('4 ELOS ES') || textToCheck.includes('G10')) return 'G4 4ELLOS ES';
-    if (textToCheck.includes('ITAPEVI')) return 'SP (ITAPEVI)';
+    if (textToCheck.includes('ITAPEVI') || textToCheck.includes('SP-IP')) return 'SP (ITAPEVI)';
     if (textToCheck.includes('4 ELOS RJ') || textToCheck.includes('ELOS RJ')) return '4 ELOS RJ';
-    if (textToCheck.includes('LSP')) return 'LSP';
+    if (textToCheck.includes('LSP')) return 'GALPÃO LSP';
     if (textToCheck.includes('PAVUNA')) return 'UNILOG PAVUNA';
     if (textToCheck.includes('G3')) return 'G3 MATRIZ';
     if (textToCheck.includes('G2')) return 'G2';
     if (textToCheck.includes('G5') || textToCheck.includes('TERABYTE')) return 'G5';
+    
     const g5Modules = [
         'MODULO 08', 'MODULO 09', 'MODULO 8', 'MODULO 9', 'MODULO 06', 'MODULO 07', 'MODULO 6', 'MODULO 7',
         'MODULO 04', 'MODULO 05', 'MODULO 4', 'MODULO 5', 'MODULO A', 'MODULO B', 'MODULO C', 'MODULO D', 'MODULO E', 'MODULO F'
     ];
     if (g5Modules.some(m => textToCheck.includes(m))) return 'G5';
+    
     return rawWarehouse || 'Geral';
 };
 
@@ -37,7 +201,8 @@ const getResponsibleByWarehouse = (warehouse: string, currentResponsible: string
         case 'G3 MATRIZ': return 'EDNEI RODRIGUES SOARES';
         case 'G5': return 'MOACIR ANDRADE NUNES';
         case 'UNILOG PAVUNA': 
-        case 'UNILOG MERITI': return 'MAURO BAPTISTA CERQUEIRA';
+        case 'UNILOG MERITI': 
+        case 'GALPÃO LSP': return 'MAURO BAPTISTA CERQUEIRA';
         case 'SP (ITAPEVI)': return 'JOSENIAS SANTOS NASCIMENTO';
         case '4 ELOS RJ': return 'DANIEL CESAR MACHADO';
         case 'G4 4ELLOS ES': return 'SILVIA SANTOS';
@@ -74,9 +239,11 @@ const parseCSV = (csv: string, type: 'camera' | 'access'): any[] => {
       const location = getValue(obj, ['Nome org', 'Localização', 'Localizacao', 'Local']);
       const module = getValue(obj, ['Nome do dispositivo', 'MODULO', 'Módulo', 'Modulo', 'Setor']);
       let warehouseRaw = getValue(obj, ['Galpão', 'Galpao', 'Warehouse']);
-      const warehouse = normalizeWarehouse(warehouseRaw, location, module);
+      
+      const warehouse = normalizeWarehouse(warehouseRaw, location, module, name);
       const responsibleRaw = getValue(obj, ['Responsável', 'Responsavel', 'Resp', 'Tecnico']);
       const responsible = getResponsibleByWarehouse(warehouse, responsibleRaw);
+      
       const statusRaw = getValue(obj, ['Canal on-line/off-line', 'Status ONLINE', 'Status', 'Status OFFLINE', 'STATUS', 'Estado', 'SITUACAO'])?.toUpperCase() || '';
       let status: Status = 'ONLINE';
       const offlineKeywords = ['OFFLINE', 'OFF', 'SEM SINAL', 'NO SIGNAL', 'ERRO', 'FALHA', 'DESLIGADO', 'INATIVO', '0', 'FALSE', 'NAO', 'NO', 'PERDA'];
@@ -92,7 +259,9 @@ const parseCSV = (csv: string, type: 'camera' | 'access'): any[] => {
       if (!name && !id) return null;
       const finalName = name || id || 'Dispositivo Sem Nome';
       const finalId = id || finalName; 
-      const warehouse = normalizeWarehouse(warehouseRaw, location, null);
+      
+      const warehouse = normalizeWarehouse(warehouseRaw, location, null, name);
+      
       const statusRaw = getValue(obj, ['Status On-line/Off-line', 'Status', 'STATUS', 'Estado', 'Situação', 'Conexão'])?.toUpperCase() || '';
       let status: Status = 'ONLINE';
       const offlineKeywords = ['OFFLINE', 'OFF', 'INATIVO', 'DESLIGADO', 'FALHA', 'ERRO', 'ERROR', 'DOWN', 'DISCONNECTED', '0', 'FALSE', 'NAO', 'NÃO', 'RUIM', 'PARADO'];
@@ -102,12 +271,65 @@ const parseCSV = (csv: string, type: 'camera' | 'access'): any[] => {
   }).filter(Boolean);
 };
 
-const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv = '', initialAccessCsv = '', initialMode = false }) => {
+// --- THIRD PARTY PARSING HELPERS ---
+const parseRowDate = (row: any): string => {
+    let val = row['Data'] || row['DATA'] || row['Date'] || row['Dia'];
+    if (!val && row['Hora'] && typeof row['Hora'] === 'string' && row['Hora'].length > 10) val = row['Hora'];
+    if (!val) return 'N/A';
+    if (typeof val === 'number') {
+        const d = new Date(Math.round((val - 25569)*86400*1000));
+        d.setMinutes(d.getMinutes() + 1);
+        return d.toISOString().split('T')[0];
+    }
+    if (typeof val === 'string') {
+        let datePart = val.split(' ')[0].trim();
+        if (datePart.includes('/')) {
+            const parts = datePart.split('/');
+            if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        if (datePart.includes('-')) return datePart;
+    }
+    return 'N/A';
+};
+
+const detectCompany = (text: string): string | null => {
+    if (!text) return null;
+    const upper = text.toUpperCase();
+    // Split into words to avoid partial matching (e.g., 'LIMPIAR' matching 'MPI')
+    const words = upper.split(/[\s,.-]+/);
+
+    if (upper.includes('PRAYLOG') || upper.includes('PRAY LOG')) return 'PRAYLOG';
+    if (upper.includes('SUPERA LOG') || upper.includes('SUPERA')) return 'SUPERA LOG';
+    if (upper.includes('FORMA')) return 'FORMA';
+    if (upper.includes('PRIMUS')) return 'PRIMUS';
+    
+    // Check exact words for short acronyms
+    if (words.includes('MPI')) return 'MPI';
+    if (words.includes('B11')) return 'B11';
+    if (words.includes('MJM')) return 'MJM';
+    if (words.includes('MULT')) return 'MULT';
+
+    return null;
+};
+
+const detectUnit = (text: string): string | null => {
+    if (!text) return null;
+    const upper = text.toUpperCase();
+    for (const unit of VALID_UNITS) {
+        if ((unit as any).exclude && (unit as any).exclude.some((exc: string) => upper.includes(exc))) continue;
+        if (unit.keywords.some(k => upper.includes(k))) return unit.id;
+    }
+    return null;
+};
+
+const Importer: React.FC<ImporterProps> = ({ onImport, onImportThirdParty, onReset, initialCameraCsv = '', initialAccessCsv = '', initialMode = false }) => {
   const [cameraCsv, setCameraCsv] = useState(initialCameraCsv);
   const [accessCsv, setAccessCsv] = useState(initialAccessCsv);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const accessInputRef = useRef<HTMLInputElement>(null);
+  const thirdPartyInputRef = useRef<HTMLInputElement>(null);
   
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'camera' | 'access') => {
     const file = e.target.files?.[0];
@@ -132,21 +354,102 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
     e.target.value = ''; // Reset input
   };
 
-  const handleDownload = (content: string, filename: string) => {
-    if (!content) return;
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleThirdPartyUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        const bstr = evt.target?.result;
+        if (window.XLSX) {
+            const wb = window.XLSX.read(bstr, { type: 'binary' });
+            const wsname = wb.SheetNames[0];
+            const ws = wb.Sheets[wsname];
+            const jsonData: RawRow[] = window.XLSX.utils.sheet_to_json(ws);
+            
+            // Process all access logs
+            const newWorkers: ProcessedWorker[] = [];
+            jsonData.forEach((row, index) => {
+                // Name Check (Ignora se estiver vazio)
+                const rawName = row['Pessoa'] || row['Nome'];
+                if (!rawName || typeof rawName !== 'string' || !rawName.trim()) {
+                    return; 
+                }
+
+                const eventType = (row['Tipo de evento'] || row['Eventos'] || '').toUpperCase();
+                const status = (row['Status de Entrada/Saída'] || '').toUpperCase();
+                const isEntry = eventType.includes('ENTRADA') || eventType.includes('DESBLOQUEIO') || eventType.includes('ACESSO LIBERADO') || status.includes('ENTRADA');
+
+                if (!isEntry) return;
+                if (eventType.includes('SAÍDA') || eventType.includes('SAIDA')) return;
+
+                // 1. Detect Unit (e.g. G2) using ONLY location-based fields
+                // Ignora nome da pessoa ou grupo para a detecção da Unidade
+                const locationString = [
+                    row['Ambiente'], 
+                    row['Ponto de Acesso'], 
+                    row['Tipo de ponto de acesso'], 
+                    row['Local'],
+                    row['Nome do dispositivo'],
+                    row['Device']
+                ].join(' ').toUpperCase();
+
+                const unit = detectUnit(locationString);
+                if (!unit) return; 
+
+                // 2. Detect Company - pode usar tudo para detectar a empresa
+                const fullSearchString = [
+                    locationString, 
+                    row['Grupo de pessoas'], 
+                    row['Pessoa'], 
+                    row['Nome']
+                ].join(' ').toUpperCase();
+
+                // CORREÇÃO: Prioridade Absoluta para a coluna 'Grupo de pessoas'
+                let company = row['Grupo de pessoas'] ? row['Grupo de pessoas'].trim().toUpperCase() : null;
+
+                // Se a coluna estiver vazia, tenta detectar automaticamente
+                if (!company) {
+                    company = detectCompany(fullSearchString);
+                }
+                
+                // Fallback final
+                if (!company) {
+                    company = 'NÃO IDENTIFICADO';
+                }
+
+                const dateNormalized = parseRowDate(row);
+                let timeStr = row['Hora'] || '-';
+                if (timeStr.includes(' ')) timeStr = timeStr.split(' ')[1]; 
+
+                newWorkers.push({
+                    id: `w-${index}-${Date.now()}`,
+                    name: rawName.trim(),
+                    company,
+                    unit,
+                    date: dateNormalized,
+                    time: timeStr,
+                    accessPoint: row['Ponto de Acesso'] || row['Ambiente'] || '-',
+                    eventType: eventType
+                });
+            });
+
+            if (newWorkers.length > 0) {
+                onImportThirdParty(newWorkers);
+            } else {
+                alert("Nenhum dado válido encontrado na planilha.");
+            }
+        } else {
+            alert("Biblioteca XLSX não carregada.");
+        }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = ''; // Reset
   };
 
   const handleProcess = () => {
       if (!cameraCsv && !accessCsv) {
-          alert("Por favor, forneça pelo menos uma fonte de dados.");
+          alert("Por favor, forneça pelo menos uma fonte de dados (Câmeras ou Acessos) para processar.");
           return;
       }
       
@@ -161,6 +464,11 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
       onImport(cameras, access);
   };
 
+  const confirmReset = () => {
+    onReset();
+    setShowResetConfirm(false);
+  };
+
   return (
     <div className={`space-y-6 animate-fade-in mx-auto pb-8 ${initialMode ? 'p-8 max-w-4xl pt-12' : 'max-w-5xl'}`}>
         
@@ -171,7 +479,7 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                     <Power size={24} className="text-emerald-500" />
                     Fonte de Dados
                 </h2>
-                <p className="text-slate-400 text-sm">Gerencie a conexão das planilhas (Importação em Massa).</p>
+                <p className="text-slate-400 text-sm">Gerencie a conexão das planilhas e upload de dados.</p>
             </div>
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
@@ -180,22 +488,22 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                     className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40 transition-all font-bold"
                 >
                     <Save size={18} /> 
-                    PROCESSAR E SALVAR
+                    PROCESSAR CSVs
                 </button>
 
                 {!initialMode && (
                     <button 
-                        onClick={onReset}
+                        onClick={() => setShowResetConfirm(true)}
                         className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors text-sm font-medium whitespace-nowrap"
                     >
-                        <RotateCcw size={16} /> Limpar
+                        <RotateCcw size={16} /> Limpar Tudo
                     </button>
                 )}
             </div>
         </div>
 
         {/* Upload Areas */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             
             {/* Cameras */}
             <div>
@@ -208,7 +516,7 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                 />
                 <button 
                     onClick={() => cameraInputRef.current?.click()}
-                    className="w-full h-full bg-slate-900 border-2 border-dashed border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/50 transition-all rounded-xl p-6 flex flex-col items-center justify-center gap-3 group cursor-pointer min-h-[160px]"
+                    className="w-full h-full bg-slate-900 border-2 border-dashed border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/50 transition-all rounded-xl p-6 flex flex-col items-center justify-center gap-3 group cursor-pointer min-h-[180px]"
                 >
                     <div className="p-4 bg-slate-800 rounded-full group-hover:bg-emerald-500/20 transition-colors">
                         <Video className="w-8 h-8 text-slate-400 group-hover:text-emerald-500" />
@@ -235,7 +543,7 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                 />
                 <button 
                     onClick={() => accessInputRef.current?.click()}
-                    className="w-full h-full bg-slate-900 border-2 border-dashed border-slate-700 hover:border-blue-500/50 hover:bg-slate-800/50 transition-all rounded-xl p-6 flex flex-col items-center justify-center gap-3 group cursor-pointer min-h-[160px]"
+                    className="w-full h-full bg-slate-900 border-2 border-dashed border-slate-700 hover:border-blue-500/50 hover:bg-slate-800/50 transition-all rounded-xl p-6 flex flex-col items-center justify-center gap-3 group cursor-pointer min-h-[180px]"
                 >
                     <div className="p-4 bg-slate-800 rounded-full group-hover:bg-blue-500/20 transition-colors">
                         <DoorClosed className="w-8 h-8 text-slate-400 group-hover:text-blue-500" />
@@ -251,13 +559,41 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                 </button>
             </div>
 
+            {/* Third Party (Direct Upload) */}
+            <div>
+                 <input 
+                    type="file" 
+                    accept=".xlsx, .csv"
+                    ref={thirdPartyInputRef}
+                    className="hidden"
+                    onChange={handleThirdPartyUpload}
+                />
+                <button 
+                    onClick={() => thirdPartyInputRef.current?.click()}
+                    className="w-full h-full bg-slate-900 border-2 border-dashed border-slate-700 hover:border-amber-500/50 hover:bg-slate-800/50 transition-all rounded-xl p-6 flex flex-col items-center justify-center gap-3 group cursor-pointer min-h-[180px]"
+                >
+                    <div className="p-4 bg-slate-800 rounded-full group-hover:bg-amber-500/20 transition-colors">
+                        <Briefcase className="w-8 h-8 text-slate-400 group-hover:text-amber-500" />
+                    </div>
+                    <div className="text-center">
+                        <h3 className="text-lg font-semibold text-white group-hover:text-amber-400 transition-colors">
+                            Terceirizados/Geral
+                        </h3>
+                        <p className="text-slate-500 text-xs mt-1">
+                            Carregar e Salvar (.xlsx)
+                        </p>
+                        <span className="text-[10px] text-amber-500/80 bg-amber-500/10 px-2 py-0.5 rounded mt-2 inline-block">Processamento Imediato</span>
+                    </div>
+                </button>
+            </div>
+
         </div>
 
         <div className="bg-blue-500/5 border border-blue-500/10 p-4 rounded-lg flex gap-3 items-start">
             <AlertCircle className="w-5 h-5 text-blue-500 mt-0.5" />
             <div className="text-sm text-blue-200/80">
-                <p className="font-semibold mb-1 text-blue-400">Edição de Dados em Massa</p>
-                <p>Cole o conteúdo CSV abaixo e clique em "Processar e Salvar" para atualizar o sistema.</p>
+                <p className="font-semibold mb-1 text-blue-400">Edição de CSVs (Câmeras e Acessos)</p>
+                <p>Cole o conteúdo CSV abaixo e clique em "Processar CSVs" para atualizar as listas principais. A planilha de Terceirizados/Geral é processada automaticamente no upload acima.</p>
             </div>
         </div>
 
@@ -267,7 +603,7 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                 <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2 text-slate-200 font-medium">
                         <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
-                        CSV Câmeras
+                        CSV Câmeras (Texto)
                     </label>
                 </div>
                 <div className="relative group">
@@ -275,7 +611,7 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                         value={cameraCsv}
                         onChange={(e) => setCameraCsv(e.target.value)}
                         placeholder="ID_Camera,Nome_Camera,Localização,Módulo,Responsável,Status..."
-                        className="w-full h-96 bg-slate-900 border border-slate-700 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none leading-relaxed"
+                        className="w-full h-80 bg-slate-900 border border-slate-700 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none leading-relaxed"
                         spellCheck={false}
                     />
                 </div>
@@ -286,7 +622,7 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                 <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2 text-slate-200 font-medium">
                         <FileSpreadsheet className="w-5 h-5 text-blue-500" />
-                        CSV Acessos
+                        CSV Acessos (Texto)
                     </label>
                 </div>
                 <div className="relative group">
@@ -294,12 +630,55 @@ const Importer: React.FC<ImporterProps> = ({ onImport, onReset, initialCameraCsv
                         value={accessCsv}
                         onChange={(e) => setAccessCsv(e.target.value)}
                         placeholder="ID,Nome,Tipo,Local,Status,UltimoRegistro..."
-                        className="w-full h-96 bg-slate-900 border border-slate-700 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
+                        className="w-full h-80 bg-slate-900 border border-slate-700 rounded-xl p-4 font-mono text-xs sm:text-sm text-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none leading-relaxed"
                         spellCheck={false}
                     />
                 </div>
             </div>
         </div>
+
+       {/* Modal de Confirmação de Reset */}
+       {showResetConfirm && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm p-6 relative">
+                    <button 
+                        onClick={() => setShowResetConfirm(false)} 
+                        className="absolute top-4 right-4 text-slate-500 hover:text-white"
+                    >
+                        <X size={20} />
+                    </button>
+                    
+                    <div className="flex flex-col items-center text-center space-y-4">
+                        <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20">
+                            <AlertTriangle className="text-rose-500 w-8 h-8" />
+                        </div>
+                        
+                        <div>
+                            <h3 className="text-xl font-bold text-white mb-2">Limpar Tudo?</h3>
+                            <p className="text-slate-400 text-sm leading-relaxed">
+                                Isso apagará <strong>TODAS</strong> as câmeras, acessos, documentos e terceiros do sistema. <br/>
+                                <span className="text-rose-400 font-semibold">Essa ação é irreversível.</span>
+                            </p>
+                        </div>
+                        
+                        <div className="flex gap-3 w-full pt-2">
+                            <button 
+                                onClick={() => setShowResetConfirm(false)}
+                                className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-lg transition-colors text-sm"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={confirmReset}
+                                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg shadow-lg shadow-rose-900/20 transition-all text-sm flex items-center justify-center gap-2"
+                            >
+                                <RotateCcw size={16} /> Sim, Limpar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
     </div>
   );
 };
