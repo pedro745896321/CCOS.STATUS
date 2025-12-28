@@ -26,46 +26,35 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
     const isAuthorizedForReport = currentUser.role === 'admin' || currentUser.role === 'manager';
 
     // --- PERMISSIONS ---
-    // Restaurado: Gestores veem apenas o que lhes é permitido. Admins veem tudo.
+    // Alteração: Permitir que Gestores vejam todos os galpões conforme solicitado.
     const allowedWarehouses = useMemo(() => {
-        if (currentUser.role === 'admin') return WAREHOUSE_LIST;
-        if (currentUser.role === 'manager') return currentUser.allowedWarehouses || [];
+        if (currentUser.role === 'admin' || currentUser.role === 'manager') return WAREHOUSE_LIST;
         return []; // Viewers
     }, [currentUser]);
 
     // Safety check: ensure selected warehouse is valid
     useEffect(() => {
         if (selectedWarehouse !== 'ALL' && !allowedWarehouses.includes(selectedWarehouse)) {
-            // Default to first allowed if available, else ALL (which might be empty for manager)
-            setSelectedWarehouse(allowedWarehouses.length > 0 ? allowedWarehouses[0] : 'ALL');
-        } else if (selectedWarehouse === 'ALL' && currentUser.role === 'manager' && allowedWarehouses.length > 0) {
-             // Managers default to their first unit usually, or ALL if they have multiple
-             setSelectedWarehouse(allowedWarehouses.length === 1 ? allowedWarehouses[0] : 'ALL');
+            setSelectedWarehouse('ALL');
         }
-    }, [allowedWarehouses, selectedWarehouse, currentUser]);
+    }, [allowedWarehouses, selectedWarehouse]);
 
     // --- DATA FILTERING ---
     const filteredWorkers = useMemo(() => {
         let subset = thirdPartyWorkers;
         
-        // 1. Permission Filtering (Critical for "Manager who has G2 in registration")
-        if (currentUser.role === 'manager') {
-             if (!allowedWarehouses || allowedWarehouses.length === 0) return [];
-             subset = subset.filter(w => allowedWarehouses.includes(w.unit));
-        }
-
-        // 2. Dropdown filtering (Warehouse)
+        // 1. Dropdown filtering (Warehouse)
         if (selectedWarehouse !== 'ALL') {
             subset = subset.filter(w => w.unit === selectedWarehouse);
         }
 
-        // 3. Date Filtering
+        // 2. Date Filtering
         if (dateSearch) {
             subset = subset.filter(w => w.date === dateSearch);
         }
 
         return subset;
-    }, [thirdPartyWorkers, selectedWarehouse, dateSearch, currentUser, allowedWarehouses]);
+    }, [thirdPartyWorkers, selectedWarehouse, dateSearch]);
 
     // --- ANALYTICS: GROUPED PEOPLE (For People List) ---
     const groupedPeople = useMemo(() => {
@@ -135,25 +124,15 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
         }
 
         const selectedRecords = filteredWorkers.filter(w => selectedIds.has(w.id));
-        // Group by person for the report
-        const reportGroups: { [key: string]: ProcessedWorker[] } = {};
         
+        // Use the format requested: "Segue o acesso da pessoa x na data x entrada horariol x"
+        let msg = "";
         selectedRecords.forEach(r => {
-            if (!reportGroups[r.name]) reportGroups[r.name] = [];
-            reportGroups[r.name].push(r);
+            const dateStr = r.date.split('-').reverse().join('/');
+            msg += `Segue o acesso de ${r.name} na data ${dateStr} entrada ${r.time}\n`;
         });
 
-        let msg = `*RELATÓRIO DE ACESSOS*\n\n`;
-        
-        Object.keys(reportGroups).forEach(name => {
-            const records = reportGroups[name];
-            records.forEach(r => {
-                const dateStr = r.date.split('-').reverse().join('/');
-                msg += `👤 *${r.name}*\n📅 Data: ${dateStr}\n⏰ Entrada: ${r.time}\n📍 Local: ${r.unit}\n\n`;
-            });
-        });
-
-        setGeneratedMessage(msg);
+        setGeneratedMessage(msg.trim());
     }, [selectedIds, filteredWorkers]);
 
     const copyToClipboard = () => {
@@ -207,9 +186,7 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
                             onChange={(e) => setSelectedWarehouse(e.target.value)} 
                             className="pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-purple-500 appearance-none cursor-pointer min-w-[200px]"
                         >
-                            <option value="ALL">
-                                {currentUser.role === 'manager' ? 'Meus Galpões Permitidos' : 'Todos os Galpões'}
-                            </option>
+                            <option value="ALL">Todos os Galpões</option>
                             {allowedWarehouses.map(wh => (
                                 <option key={wh} value={wh}>{wh}</option>
                             ))}
@@ -248,7 +225,7 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
                                     value={peopleSearch}
                                     onChange={(e) => setPeopleSearch(e.target.value)}
                                     placeholder="Buscar pessoa..." 
-                                    className="w-full sm:w-auto pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
+                                    className="w-full sm:w-auto pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
                                 />
                             </div>
                         </div>

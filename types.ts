@@ -24,7 +24,7 @@ export interface AppNotification {
   senderId?: string; // Para mensagens
   senderName?: string;
   message: string;
-  type: 'message' | 'alert' | 'info' | 'system';
+  type: 'message' | 'alert' | 'info' | 'system' | 'success';
   timestamp: string;
   read: boolean;
   linkTo?: string; // Tab to open (e.g., 'chat', 'tasks')
