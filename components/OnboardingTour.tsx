@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, ChevronRight, ChevronLeft, Shield, LayoutDashboard, Video, Settings, Bell, CheckCircle2, ClipboardList, MessageSquare, HelpCircle } from 'lucide-react';
+import { X, ChevronRight, ChevronLeft, Shield, LayoutDashboard, Video, Settings, Bell, CheckCircle2, ClipboardList, MessageSquare, HelpCircle, Smartphone, ArrowUpCircle, Warehouse, Volume2 } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface OnboardingTourProps {
@@ -12,52 +12,52 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ role, onFinish }) => {
   const [step, setStep] = useState(0);
 
   const isAdmin = role === 'admin';
+  const isManager = role === 'manager';
 
   const steps = [
     {
-      title: "Manual do Sistema CCOS",
-      description: "Bem-vindo! Este guia interativo explica todas as funcionalidades do sistema, incluindo as novas ferramentas de gestão de tarefas e comunicação.",
-      icon: <HelpCircle size={48} className="text-blue-400" />,
-      image: null
+      title: "Manual ControlVision v2.5",
+      description: "Bem-vindo à nova versão! O sistema foi atualizado com melhorias de performance, novos recursos de gestão e total compatibilidade com celulares.",
+      icon: <HelpCircle size={48} className="text-amber-400" />,
     },
     {
-      title: "Dashboard Inteligente",
-      description: "Visão geral em tempo real: monitore câmeras online/offline, status dos acessos e alertas de prioridade. Tudo em um só lugar.",
-      icon: <LayoutDashboard size={48} className="text-blue-500" />,
+      title: "CCOS no seu Bolso",
+      description: "Agora o ControlVision é totalmente responsivo. Você pode monitorar câmeras, responder chats e gerenciar tarefas diretamente do seu smartphone com layout adaptado.",
+      icon: <Smartphone size={48} className="text-blue-400" />,
     },
     {
-      title: "Monitoramento de Câmeras",
-      description: "Acesse as abas 'Câmeras' e 'Acessos' no menu lateral. Use os filtros avançados por galpão, módulo ou status para encontrar dispositivos rapidamente.",
-      icon: <Video size={48} className="text-emerald-500" />,
+      title: "Monitoramento Unificado",
+      description: "Simplificamos as unidades! 'Expressa SJM' e 'Meriti' agora são uma única unidade (MERITI) para facilitar a geração de relatórios e a filtragem de dados.",
+      icon: <Warehouse size={48} className="text-emerald-500" />,
+    },
+    {
+      title: "Navegação Rápida",
+      description: "Ao navegar por listas longas, um botão flutuante 'Voltar ao Topo' aparecerá no canto inferior para que você retorne ao cabeçalho instantaneamente.",
+      icon: <ArrowUpCircle size={48} className="text-purple-500" />,
     },
     {
         title: isAdmin ? "Gestão de Tarefas (Supervisão)" : "Minhas Tarefas (Operador)",
         description: isAdmin 
-            ? "NOVO: Crie e delegue tarefas para a equipe. Monitore o progresso, visualize anexos e utilize o botão 'APAGAR TAREFA' para remover itens do banco de dados (ação permanente)." 
-            : "NOVO: Visualize suas tarefas pendentes. Clique em 'Iniciar', anexe fotos/evidências e conclua o trabalho. Você também pode apagar tarefas se necessário.",
-        icon: <ClipboardList size={48} className="text-purple-500" />
+            ? "Delegue tarefas e receba alertas sonoros quando um operador concluir um chamado. Use os novos botões de exclusão para remover tarefas concluídas e manter o banco limpo." 
+            : "Visualize suas tarefas, anexe evidências fotográficas e registre comentários. Agora o sistema emite um 'ding' sempre que uma nova tarefa lhe for atribuída.",
+        icon: <ClipboardList size={48} className="text-indigo-500" />
     },
     {
-        title: "Chat e Pendências",
-        description: "Comunicação em tempo real com a equipe. Utilize a função 'Criar Pendência' no chat para alertar sobre e-mails ou solicitações urgentes.",
+        title: "Pendências e Comunicação",
+        description: "No Chat e nas Pendências de E-mail, você pode registrar solicitações críticas. Administradores agora possuem o botão de 'Apagar' para remover registros resolvidos permanentemente.",
         icon: <MessageSquare size={48} className="text-pink-500" />
     },
-    isAdmin ? {
-      title: "Área Administrativa",
-      description: "Acesso exclusivo para Cadastrar novos dispositivos, Gerenciar Usuários (criar/bloquear contas) e Importar dados em massa via planilha CSV.",
-      icon: <Settings size={48} className="text-slate-400" />,
-    } : null,
     {
-      title: "Notificações e Alertas",
-      description: "Fique atento ao ícone de sino no topo. Ele avisará sobre vencimentos de documentos, novas tarefas atribuídas e mensagens não lidas.",
-      icon: <Bell size={48} className="text-rose-500" />,
+      title: "Alertas em Tempo Real",
+      description: "O ícone de sino no topo centraliza alertas de vencimento de documentos (AVCB, Alvarás) e notificações de equipe. Mantenha o som ativado para alertas sonoros!",
+      icon: <Volume2 size={48} className="text-rose-500" />,
     },
     {
       title: "Tudo Pronto!",
-      description: "Você finalizou o manual. Para rever estas instruções a qualquer momento, clique no ícone de ajuda (?) no topo da tela.",
+      description: "O sistema está configurado para máxima eficiência. Se precisar rever este manual, clique no ícone de interrogação (?) no cabeçalho a qualquer momento.",
       icon: <CheckCircle2 size={48} className="text-emerald-400" />,
     }
-  ].filter(Boolean) as any[]; // Remove nulls
+  ].filter(Boolean) as any[];
 
   const handleNext = () => {
     if (step < steps.length - 1) {
