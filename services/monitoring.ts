@@ -1,7 +1,7 @@
 
-import { ref, set, update, remove } from 'firebase/database';
+import { ref, set, update, push, remove } from 'firebase/database';
 import { db } from './firebase';
-import { Camera, AccessPoint, PublicDocument, ProcessedWorker, Status } from '../types';
+import { Camera, AccessPoint, PublicDocument, ProcessedWorker, Status, ThirdPartyImport } from '../types';
 
 class MonitoringService {
   // --- Cameras ---
@@ -108,8 +108,22 @@ class MonitoringService {
     await update(ref(db, 'monitoramento/metadata'), { lastSync: formattedTime });
   }
 
-  async saveThirdPartyWorkers(workers: ProcessedWorker[]) {
-    await set(ref(db, 'monitoramento/third_party_workers'), workers);
+  // NOVO: Salva como um lote para manter histórico
+  async addThirdPartyImport(workers: ProcessedWorker[], fileName: string) {
+      const importRef = push(ref(db, 'monitoramento/third_party_imports'));
+      const newImport: ThirdPartyImport = {
+          id: importRef.key || Date.now().toString(),
+          fileName: fileName,
+          importedAt: new Date().toISOString(),
+          count: workers.length,
+          workers: workers
+      };
+      await set(importRef, newImport);
+  }
+
+  // NOVO: Exclui um lote específico
+  async deleteThirdPartyImport(importId: string) {
+      await remove(ref(db, `monitoramento/third_party_imports/${importId}`));
   }
 
   async fullReset() {
@@ -117,7 +131,7 @@ class MonitoringService {
         cameras: [],
         accessPoints: [],
         documents: [],
-        third_party_workers: [],
+        third_party_imports: {}, // Limpa o histórico
         metadata: { lastSync: '-' },
         organizer: { notes: [], meetings: [], events: [] }
     });

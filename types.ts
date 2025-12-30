@@ -71,6 +71,14 @@ export interface Note {
   createdAt: string;
 }
 
+export interface ShiftNote {
+  id: string;
+  author: string;
+  authorId: string;
+  content: string;
+  createdAt: string; // ISO string
+}
+
 export interface Meeting {
   id: string;
   title: string;
@@ -120,6 +128,14 @@ export interface ProcessedWorker {
     eventType: string; // 'Entrada' ou 'Desbloqueio'
 }
 
+export interface ThirdPartyImport {
+    id: string;
+    fileName: string;
+    importedAt: string;
+    count: number;
+    workers: ProcessedWorker[];
+}
+
 export interface EmailPendency {
     id: string;
     title: string;
@@ -162,8 +178,10 @@ export interface AppData {
   accessPoints: AccessPoint[];
   documents: PublicDocument[];
   notes: Note[];
+  shiftNotes?: ShiftNote[]; // Ocorrências de plantão
   meetings: Meeting[];
   events: CalendarEvent[];
+  thirdPartyImports?: ThirdPartyImport[]; // Histórico de lotes
   lastSync: string;
 }
 

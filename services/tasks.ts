@@ -17,11 +17,15 @@ class TaskService {
         updates.startedAt = new Date().toISOString();
     } else if (status === 'completed') {
         updates.completedAt = new Date().toISOString();
-        if (note) {
+        if (note !== undefined) {
             updates.completionNote = note;
         }
     }
     await update(ref(db, `tasks/${taskId}`), updates);
+  }
+
+  async updateTaskNote(taskId: string, note: string) {
+    await update(ref(db, `tasks/${taskId}`), { completionNote: note });
   }
 
   async addAttachment(taskId: string, attachment: TaskAttachment, currentAttachments: TaskAttachment[] = []) {

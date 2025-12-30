@@ -26,10 +26,11 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
     const isAuthorizedForReport = currentUser.role === 'admin' || currentUser.role === 'manager';
 
     // --- PERMISSIONS ---
-    // Alteração: Permitir que Gestores vejam todos os galpões conforme solicitado.
+    // Ajuste: Admin vê tudo, Gestor vê apenas o que lhe foi permitido no cadastro.
     const allowedWarehouses = useMemo(() => {
-        if (currentUser.role === 'admin' || currentUser.role === 'manager') return WAREHOUSE_LIST;
-        return []; // Viewers
+        if (currentUser.role === 'admin') return WAREHOUSE_LIST;
+        if (currentUser.role === 'manager') return currentUser.allowedWarehouses || [];
+        return []; 
     }, [currentUser]);
 
     // Safety check: ensure selected warehouse is valid
@@ -41,27 +42,31 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
 
     // --- DATA FILTERING ---
     const filteredWorkers = useMemo(() => {
+        // 1. Aplica restrição de permissão (Gestor vê apenas seus galpões)
         let subset = thirdPartyWorkers;
         
-        // 1. Dropdown filtering (Warehouse)
+        if (currentUser.role === 'manager') {
+            subset = subset.filter(w => allowedWarehouses.includes(w.unit));
+        }
+        
+        // 2. Filtro do Dropdown (Se selecionou um galpão específico)
         if (selectedWarehouse !== 'ALL') {
             subset = subset.filter(w => w.unit === selectedWarehouse);
         }
 
-        // 2. Date Filtering
+        // 3. Filtro de Data
         if (dateSearch) {
             subset = subset.filter(w => w.date === dateSearch);
         }
 
         return subset;
-    }, [thirdPartyWorkers, selectedWarehouse, dateSearch]);
+    }, [thirdPartyWorkers, selectedWarehouse, dateSearch, currentUser.role, allowedWarehouses]);
 
     // --- ANALYTICS: GROUPED PEOPLE (For People List) ---
     const groupedPeople = useMemo(() => {
         const groups: { [key: string]: { id: string, name: string, company: string, history: ProcessedWorker[] } } = {};
         
         filteredWorkers.forEach(w => {
-            // Group key based on name and company to handle same names in diff companies
             const key = `${w.name.trim().toUpperCase()}|${w.company.trim().toUpperCase()}`;
             
             if (!groups[key]) {
@@ -75,7 +80,6 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
             groups[key].history.push(w);
         });
 
-        // Convert to array and sort history by date/time desc
         return Object.values(groups)
             .map(person => {
                 person.history.sort((a, b) => {
@@ -124,8 +128,6 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
         }
 
         const selectedRecords = filteredWorkers.filter(w => selectedIds.has(w.id));
-        
-        // Use the format requested: "Segue o acesso da pessoa x na data x entrada horariol x"
         let msg = "";
         selectedRecords.forEach(r => {
             const dateStr = r.date.split('-').reverse().join('/');
@@ -158,6 +160,7 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
                     </h2>
                     <p className="text-slate-400 text-sm mt-1">
                         Histórico detalhado de fluxo de pessoas.
+                        {currentUser.role === 'manager' && <span className="ml-2 text-purple-400 font-bold">(Visualização Restrita)</span>}
                     </p>
                 </div>
                 
@@ -186,7 +189,9 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
                             onChange={(e) => setSelectedWarehouse(e.target.value)} 
                             className="pl-9 pr-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-purple-500 appearance-none cursor-pointer min-w-[200px]"
                         >
-                            <option value="ALL">Todos os Galpões</option>
+                            <option value="ALL">
+                                {currentUser.role === 'manager' ? 'Meus Galpões Permitidos' : 'Todos os Galpões'}
+                            </option>
                             {allowedWarehouses.map(wh => (
                                 <option key={wh} value={wh}>{wh}</option>
                             ))}
@@ -198,156 +203,163 @@ const AccessManagement: React.FC<AccessManagementProps> = ({ accessPoints, third
 
             {/* PEOPLE LIST */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-lg min-h-[500px]">
-                <div className="animate-fade-in space-y-4">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-                        <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
-                            <Users size={20} className="text-amber-500" />
-                            {activeTab === 'report' ? 'Selecione os Acessos para Relatório' : 'Histórico por Pessoa'}
-                        </h3>
-                        
-                        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                            {/* Date Filter */}
-                            <div className="relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                                <input 
-                                    type="date"
-                                    value={dateSearch}
-                                    onChange={(e) => setDateSearch(e.target.value)}
-                                    className="w-full sm:w-auto pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-purple-500 [color-scheme:light] dark:[color-scheme:dark]"
-                                />
-                            </div>
+                {currentUser.role === 'manager' && allowedWarehouses.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                        <AlertCircle size={48} className="text-amber-500 mb-4" />
+                        <h3 className="text-lg font-bold text-white">Acesso Restrito</h3>
+                        <p className="text-slate-400 max-w-xs">Você não possui nenhum galpão vinculado ao seu perfil. Solicite ao administrador.</p>
+                    </div>
+                ) : (
+                    <div className="animate-fade-in space-y-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+                            <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                                <Users size={20} className="text-amber-500" />
+                                {activeTab === 'report' ? 'Selecione os Acessos para Relatório' : 'Histórico por Pessoa'}
+                            </h3>
+                            
+                            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                                {/* Date Filter */}
+                                <div className="relative">
+                                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                                    <input 
+                                        type="date"
+                                        value={dateSearch}
+                                        onChange={(e) => setDateSearch(e.target.value)}
+                                        className="w-full sm:w-auto pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:border-purple-500 [color-scheme:light] dark:[color-scheme:dark]"
+                                    />
+                                </div>
 
-                            {/* Name Search */}
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                                <input 
-                                    type="text" 
-                                    value={peopleSearch}
-                                    onChange={(e) => setPeopleSearch(e.target.value)}
-                                    placeholder="Buscar pessoa..." 
-                                    className="w-full sm:w-auto pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
-                                />
+                                {/* Name Search */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+                                    <input 
+                                        type="text" 
+                                        value={peopleSearch}
+                                        onChange={(e) => setPeopleSearch(e.target.value)}
+                                        placeholder="Buscar pessoa..." 
+                                        className="w-full sm:w-auto pl-8 pr-4 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:border-purple-500"
+                                    />
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="space-y-3">
-                        {groupedPeople
-                            .filter(p => p.name.toLowerCase().includes(peopleSearch.toLowerCase()))
-                            .map((person) => {
-                                const allPersonIds = person.history.map(h => h.id);
-                                const isAllSelected = allPersonIds.length > 0 && allPersonIds.every(id => selectedIds.has(id));
-                                const isPartialSelected = allPersonIds.some(id => selectedIds.has(id)) && !isAllSelected;
+                        <div className="space-y-3">
+                            {groupedPeople
+                                .filter(p => p.name.toLowerCase().includes(peopleSearch.toLowerCase()))
+                                .map((person) => {
+                                    const allPersonIds = person.history.map(h => h.id);
+                                    const isAllSelected = allPersonIds.length > 0 && allPersonIds.every(id => selectedIds.has(id));
+                                    const isPartialSelected = allPersonIds.some(id => selectedIds.has(id)) && !isAllSelected;
 
-                                return (
-                                    <div key={person.id} className={`border rounded-lg overflow-hidden transition-all duration-300 ${activeTab === 'report' && isPartialSelected ? 'border-purple-500/50 bg-purple-500/5' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40'}`}>
-                                        {/* HEADER - PERSON */}
-                                        <div 
-                                            className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                                            onClick={(e) => {
-                                                // If clicking specifically on checkbox area, don't toggle expand
-                                                if ((e.target as HTMLElement).closest('.selection-checkbox')) return;
-                                                togglePersonExpand(person.id);
-                                            }}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                {activeTab === 'report' && (
-                                                    <div className="selection-checkbox" onClick={(e) => e.stopPropagation()}>
-                                                        <button 
-                                                            onClick={() => handleSelectPersonGroup(person.history)}
-                                                            className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isAllSelected || isPartialSelected ? 'text-purple-500' : 'text-slate-400'}`}
-                                                        >
-                                                            {isAllSelected ? <CheckSquare size={20} /> : isPartialSelected ? <div className="relative"><Square size={20} /><div className="absolute inset-0 m-auto w-3 h-3 bg-purple-500 rounded-sm"></div></div> : <Square size={20} />}
-                                                        </button>
+                                    return (
+                                        <div key={person.id} className={`border rounded-lg overflow-hidden transition-all duration-300 ${activeTab === 'report' && isPartialSelected ? 'border-purple-500/50 bg-purple-500/5' : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40'}`}>
+                                            {/* HEADER - PERSON */}
+                                            <div 
+                                                className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                                onClick={(e) => {
+                                                    if ((e.target as HTMLElement).closest('.selection-checkbox')) return;
+                                                    togglePersonExpand(person.id);
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    {activeTab === 'report' && (
+                                                        <div className="selection-checkbox" onClick={(e) => e.stopPropagation()}>
+                                                            <button 
+                                                                onClick={() => handleSelectPersonGroup(person.history)}
+                                                                className={`p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${isAllSelected || isPartialSelected ? 'text-purple-500' : 'text-slate-400'}`}
+                                                            >
+                                                                {isAllSelected ? <CheckSquare size={20} /> : isPartialSelected ? <div className="relative"><Square size={20} /><div className="absolute inset-0 m-auto w-3 h-3 bg-purple-500 rounded-sm"></div></div> : <Square size={20} />}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 font-bold">
+                                                        {person.name.charAt(0)}
                                                     </div>
-                                                )}
-                                                <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-500 font-bold">
-                                                    {person.name.charAt(0)}
+                                                    <div>
+                                                        <h4 className="font-bold text-slate-800 dark:text-white">{person.name}</h4>
+                                                        <p className="text-xs text-slate-500 dark:text-slate-400">{person.company}</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <h4 className="font-bold text-slate-800 dark:text-white">{person.name}</h4>
-                                                    <p className="text-xs text-slate-500 dark:text-slate-400">{person.company}</p>
+                                                
+                                                <div className="flex items-center gap-4 mt-3 sm:mt-0 w-full sm:w-auto justify-between sm:justify-end">
+                                                    <div className="text-right mr-4">
+                                                        <span className="block text-[10px] text-slate-500 uppercase">Acessos</span>
+                                                        <span className="block font-mono font-bold text-emerald-500 text-lg">{person.history.length}</span>
+                                                    </div>
+                                                    {expandedPersonKey === person.id ? <ChevronUp size={20} className="text-slate-400"/> : <ChevronDown size={20} className="text-slate-400"/>}
                                                 </div>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-4 mt-3 sm:mt-0 w-full sm:w-auto justify-between sm:justify-end">
-                                                <div className="text-right mr-4">
-                                                    <span className="block text-[10px] text-slate-500 uppercase">Acessos</span>
-                                                    <span className="block font-mono font-bold text-emerald-500 text-lg">{person.history.length}</span>
-                                                </div>
-                                                {expandedPersonKey === person.id ? <ChevronUp size={20} className="text-slate-400"/> : <ChevronDown size={20} className="text-slate-400"/>}
-                                            </div>
-                                        </div>
 
-                                        {/* BODY - ACCESS HISTORY (EXPANDED) */}
-                                        {expandedPersonKey === person.id && (
-                                            <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-4 animate-fade-in">
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full text-left text-xs">
-                                                        <thead className="text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
-                                                            <tr>
-                                                                {activeTab === 'report' && <th className="pb-2 w-8"></th>}
-                                                                <th className="pb-2">Data</th>
-                                                                <th className="pb-2">Horário</th>
-                                                                <th className="pb-2">Local / Galpão</th>
-                                                                <th className="pb-2">Ponto de Acesso</th>
-                                                                <th className="pb-2">Evento</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                                                            {person.history.map((record, idx) => {
-                                                                const isSelected = selectedIds.has(record.id);
-                                                                return (
-                                                                    <tr 
-                                                                        key={record.id} 
-                                                                        className={`transition-colors ${isSelected && activeTab === 'report' ? 'bg-purple-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
-                                                                        onClick={() => activeTab === 'report' && handleSelectRecord(record.id)}
-                                                                    >
-                                                                        {activeTab === 'report' && (
-                                                                            <td className="py-2.5">
-                                                                                <button className={`text-purple-500 ${isSelected ? 'opacity-100' : 'opacity-30 hover:opacity-100'}`}>
-                                                                                    {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
-                                                                                </button>
-                                                                            </td>
-                                                                        )}
-                                                                        <td className="py-2.5 font-mono text-slate-600 dark:text-slate-400">
-                                                                            {record.date !== 'N/A' ? record.date.split('-').reverse().join('/') : '-'}
-                                                                        </td>
-                                                                        <td className="py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                                                                            {record.time}
-                                                                        </td>
-                                                                        <td className="py-2.5 text-slate-700 dark:text-slate-300">
-                                                                            {record.unit}
-                                                                        </td>
-                                                                        <td className="py-2.5 text-slate-500">
-                                                                            {record.accessPoint}
-                                                                        </td>
-                                                                        <td className="py-2.5">
-                                                                            {record.eventType.includes('DESBLOQUEIO') || record.eventType.includes('ENTRADA') ? (
-                                                                                <span className="text-emerald-600 dark:text-emerald-500 bg-emerald-100 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20">Entrada</span>
-                                                                            ) : (
-                                                                                <span className="text-slate-500">{record.eventType}</span>
+                                            {/* BODY - ACCESS HISTORY (EXPANDED) */}
+                                            {expandedPersonKey === person.id && (
+                                                <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-4 animate-fade-in">
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-left text-xs">
+                                                            <thead className="text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-800">
+                                                                <tr>
+                                                                    {activeTab === 'report' && <th className="pb-2 w-8"></th>}
+                                                                    <th className="pb-2">Data</th>
+                                                                    <th className="pb-2">Horário</th>
+                                                                    <th className="pb-2">Local / Galpão</th>
+                                                                    <th className="pb-2">Ponto de Acesso</th>
+                                                                    <th className="pb-2">Evento</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
+                                                                {person.history.map((record, idx) => {
+                                                                    const isSelected = selectedIds.has(record.id);
+                                                                    return (
+                                                                        <tr 
+                                                                            key={record.id} 
+                                                                            className={`transition-colors ${isSelected && activeTab === 'report' ? 'bg-purple-500/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/30'}`}
+                                                                            onClick={() => activeTab === 'report' && handleSelectRecord(record.id)}
+                                                                        >
+                                                                            {activeTab === 'report' && (
+                                                                                <td className="py-2.5">
+                                                                                    <button className={`text-purple-500 ${isSelected ? 'opacity-100' : 'opacity-30 hover:opacity-100'}`}>
+                                                                                        {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+                                                                                    </button>
+                                                                                </td>
                                                                             )}
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            })}
-                                                        </tbody>
-                                                    </table>
+                                                                            <td className="py-2.5 font-mono text-slate-600 dark:text-slate-400">
+                                                                                {record.date !== 'N/A' ? record.date.split('-').reverse().join('/') : '-'}
+                                                                            </td>
+                                                                            <td className="py-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                                                                                {record.time}
+                                                                            </td>
+                                                                            <td className="py-2.5 text-slate-700 dark:text-slate-300">
+                                                                                {record.unit}
+                                                                            </td>
+                                                                            <td className="py-2.5 text-slate-500">
+                                                                                {record.accessPoint}
+                                                                            </td>
+                                                                            <td className="py-2.5">
+                                                                                {record.eventType.includes('DESBLOQUEIO') || record.eventType.includes('ENTRADA') ? (
+                                                                                    <span className="text-emerald-600 dark:text-emerald-500 bg-emerald-100 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20">Entrada</span>
+                                                                                ) : (
+                                                                                    <span className="text-slate-500">{record.eventType}</span>
+                                                                                )}
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })
-                        }
-                        {groupedPeople.length === 0 && (
-                            <div className="text-center py-12 text-slate-500 italic border-2 border-dashed border-slate-800 rounded-xl">
-                                Nenhum registro encontrado para os filtros atuais.
-                            </div>
-                        )}
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            }
+                            {groupedPeople.length === 0 && (
+                                <div className="text-center py-12 text-slate-500 italic border-2 border-dashed border-slate-800 rounded-xl">
+                                    Nenhum registro encontrado para os filtros atuais.
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* FLOATING REPORT PANEL */}

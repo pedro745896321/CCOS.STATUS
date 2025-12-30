@@ -8,7 +8,6 @@ export const WAREHOUSE_LIST = [
     'GALPÃO G3 / MATRIZ',
     'GALPÃO G5 (MD6)',
     'UNIDADE SP-IP',
-    'EXPRESSA SJM',
     'PAVUNA',
     'GALPÃO 4 ELOS',
     'GALPÃO LSP',

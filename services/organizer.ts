@@ -1,7 +1,7 @@
 
 import { ref, set } from 'firebase/database';
 import { db } from './firebase';
-import { Note, Meeting, CalendarEvent } from '../types';
+import { Note, ShiftNote } from '../types';
 
 class OrganizerService {
   // --- Notes ---
@@ -24,24 +24,14 @@ class OrganizerService {
     await set(ref(db, 'monitoramento/organizer/notes'), newNotes);
   }
 
-  // --- Meetings ---
-  async addMeeting(meeting: Meeting, currentMeetings: Meeting[]) {
-    await set(ref(db, 'monitoramento/organizer/meetings'), [...currentMeetings, meeting]);
+  // --- Shift Notes (Plantão) ---
+  async addShiftNote(note: ShiftNote, currentNotes: ShiftNote[] = []) {
+    await set(ref(db, 'monitoramento/organizer/shift_notes'), [note, ...currentNotes]);
   }
 
-  async deleteMeeting(id: string, currentMeetings: Meeting[]) {
-    const newMeetings = currentMeetings.filter(m => m.id !== id);
-    await set(ref(db, 'monitoramento/organizer/meetings'), newMeetings);
-  }
-
-  // --- Events ---
-  async addEvent(event: CalendarEvent, currentEvents: CalendarEvent[]) {
-    await set(ref(db, 'monitoramento/organizer/events'), [...currentEvents, event]);
-  }
-
-  async deleteEvent(id: string, currentEvents: CalendarEvent[]) {
-    const newEvents = currentEvents.filter(e => e.id !== id);
-    await set(ref(db, 'monitoramento/organizer/events'), newEvents);
+  async deleteShiftNote(id: string, currentNotes: ShiftNote[]) {
+    const newNotes = currentNotes.filter(n => n.id !== id);
+    await set(ref(db, 'monitoramento/organizer/shift_notes'), newNotes);
   }
 }
 

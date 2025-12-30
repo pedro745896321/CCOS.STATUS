@@ -2,15 +2,17 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { db } from '../services/firebase';
-import { AppData, ProcessedWorker, User } from '../types';
+import { AppData, ProcessedWorker, User, ThirdPartyImport, ShiftNote } from '../types';
 
 const INITIAL_DATA: AppData = {
   cameras: [],
   accessPoints: [],
   documents: [],
   notes: [],
+  shiftNotes: [],
   meetings: [],
   events: [],
+  thirdPartyImports: [],
   lastSync: '-'
 };
 
@@ -29,11 +31,10 @@ export const useAppData = (user: User | null) => {
     const camerasRef = ref(db, 'monitoramento/cameras');
     const accessRef = ref(db, 'monitoramento/access_points');
     const documentsRef = ref(db, 'monitoramento/documents');
-    const thirdPartyRef = ref(db, 'monitoramento/third_party_workers');
+    const importsRef = ref(db, 'monitoramento/third_party_imports');
     const metadataRef = ref(db, 'monitoramento/metadata');
     const notesRef = ref(db, 'monitoramento/organizer/notes');
-    const meetingsRef = ref(db, 'monitoramento/organizer/meetings');
-    const eventsRef = ref(db, 'monitoramento/organizer/events');
+    const shiftNotesRef = ref(db, 'monitoramento/organizer/shift_notes');
 
     // Listeners
     const unsubCameras = onValue(camerasRef, (snap) => {
@@ -49,8 +50,28 @@ export const useAppData = (user: User | null) => {
         setData(prev => ({ ...prev, documents: snap.val() || [] }));
     });
     
-    const unsubThirdParty = onValue(thirdPartyRef, (snap) => {
-        setThirdPartyWorkers(snap.val() || []);
+    // Ouvinte de importações (Histórico)
+    const unsubImports = onValue(importsRef, (snap) => {
+        const val = snap.val();
+        if (val) {
+            const imports: ThirdPartyImport[] = Object.keys(val).map(key => ({
+                id: key,
+                ...val[key]
+            })).sort((a, b) => new Date(b.importedAt).getTime() - new Date(a.importedAt).getTime());
+
+            setData(prev => ({ ...prev, thirdPartyImports: imports }));
+
+            const allWorkers: ProcessedWorker[] = [];
+            imports.forEach(imp => {
+                if (imp.workers) {
+                    allWorkers.push(...imp.workers);
+                }
+            });
+            setThirdPartyWorkers(allWorkers);
+        } else {
+            setData(prev => ({ ...prev, thirdPartyImports: [] }));
+            setThirdPartyWorkers([]);
+        }
     });
 
     const unsubMetadata = onValue(metadataRef, (snap) => {
@@ -61,18 +82,16 @@ export const useAppData = (user: User | null) => {
     });
 
     const unsubNotes = onValue(notesRef, (snap) => setData(prev => ({ ...prev, notes: snap.val() || [] })));
-    const unsubMeetings = onValue(meetingsRef, (snap) => setData(prev => ({ ...prev, meetings: snap.val() || [] })));
-    const unsubEvents = onValue(eventsRef, (snap) => setData(prev => ({ ...prev, events: snap.val() || [] })));
+    const unsubShiftNotes = onValue(shiftNotesRef, (snap) => setData(prev => ({ ...prev, shiftNotes: snap.val() || [] })));
 
     return () => {
         unsubCameras();
         unsubAccess();
         unsubDocs();
-        unsubThirdParty();
+        unsubImports();
         unsubMetadata();
         unsubNotes();
-        unsubMeetings();
-        unsubEvents();
+        unsubShiftNotes();
     };
   }, [user]);
 

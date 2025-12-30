@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/firebase';
-import { ref, onValue, update, off } from 'firebase/database';
+import { ref, onValue, update, off, remove } from 'firebase/database';
 import { EmailPendency, User } from '../types';
-import { Mail, AlertCircle, CheckCircle2, ExternalLink, Clock, User as UserIcon, Check } from 'lucide-react';
+import { Mail, AlertCircle, CheckCircle2, ExternalLink, Clock, User as UserIcon, Check, Trash2, X } from 'lucide-react';
 
 interface EmailPendenciesProps {
     currentUser: User;
@@ -12,6 +12,9 @@ interface EmailPendenciesProps {
 const EmailPendencies: React.FC<EmailPendenciesProps> = ({ currentUser }) => {
     const [pendencies, setPendencies] = useState<EmailPendency[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+
+    const isAdmin = currentUser.role === 'admin';
 
     useEffect(() => {
         const pendenciesRef = ref(db, 'email_pendencies');
@@ -50,6 +53,17 @@ const EmailPendencies: React.FC<EmailPendenciesProps> = ({ currentUser }) => {
         } catch (error) {
             console.error(error);
             alert("Erro ao atualizar pendência.");
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!deleteId) return;
+        try {
+            await remove(ref(db, `email_pendencies/${deleteId}`));
+            setDeleteId(null);
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao excluir pendência.");
         }
     };
 
@@ -92,7 +106,7 @@ const EmailPendencies: React.FC<EmailPendenciesProps> = ({ currentUser }) => {
                     {pendencies.map((item) => (
                         <div 
                             key={item.id} 
-                            className={`relative overflow-hidden rounded-xl border transition-all duration-300 p-5 flex flex-col md:flex-row gap-4
+                            className={`relative overflow-hidden rounded-xl border transition-all duration-300 p-5 flex flex-col md:flex-row gap-4 group
                                 ${item.status === 'pendente' 
                                     ? 'bg-slate-900 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' 
                                     : 'bg-slate-950/50 border-slate-800 opacity-60 hover:opacity-100'}
@@ -106,15 +120,26 @@ const EmailPendencies: React.FC<EmailPendenciesProps> = ({ currentUser }) => {
                                     <h3 className={`font-bold text-lg ${item.status === 'pendente' ? 'text-white' : 'text-slate-400 line-through'}`}>
                                         {item.title}
                                     </h3>
-                                    {item.status === 'pendente' ? (
-                                        <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/20 uppercase tracking-wider">
-                                            Pendente
-                                        </span>
-                                    ) : (
-                                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold border border-emerald-500/20 uppercase tracking-wider flex items-center gap-1">
-                                            <Check size={12} /> Resolvido
-                                        </span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {item.status === 'pendente' ? (
+                                            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-xs font-bold border border-amber-500/20 uppercase tracking-wider">
+                                                Pendente
+                                            </span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 text-xs font-bold border border-emerald-500/20 uppercase tracking-wider flex items-center gap-1">
+                                                <Check size={12} /> Resolvido
+                                            </span>
+                                        )}
+                                        {isAdmin && (
+                                            <button 
+                                                onClick={() => setDeleteId(item.id)}
+                                                className="p-1.5 text-slate-500 hover:text-rose-500 hover:bg-rose-500/10 rounded transition-all opacity-0 group-hover:opacity-100"
+                                                title="Excluir Pendência"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 mb-4">
@@ -160,6 +185,42 @@ const EmailPendencies: React.FC<EmailPendenciesProps> = ({ currentUser }) => {
                             )}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Modal de Confirmação de Exclusão */}
+            {deleteId && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm p-6 relative">
+                        <button onClick={() => setDeleteId(null)} className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors">
+                            <X size={20} />
+                        </button>
+                        <div className="flex flex-col items-center text-center space-y-4">
+                            <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center border border-rose-500/20">
+                                <Trash2 className="text-rose-500 w-8 h-8" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white mb-2">Excluir Pendência?</h3>
+                                <p className="text-slate-400 text-sm leading-relaxed">
+                                    Esta ação removerá o registro permanentemente do banco de dados.
+                                </p>
+                            </div>
+                            <div className="flex gap-3 w-full pt-2">
+                                <button 
+                                    onClick={() => setDeleteId(null)}
+                                    className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-lg transition-colors text-sm"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleDelete}
+                                    className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg shadow-lg shadow-rose-900/20 transition-all text-sm"
+                                >
+                                    Confirmar Exclusão
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

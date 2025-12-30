@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Shield, Lock, Mail, Loader2, LogIn, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../services/auth';
@@ -21,8 +22,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
     try {
       await authService.login(email, password);
-      // Auth state change is handled by authService.subscribeToAuthChanges in App.tsx
-      // No need to call onLogin manually or reset loading state as component will unmount
     } catch (err: any) {
       setError(err.message || 'Erro ao entrar.');
       setLoading(false);
@@ -34,8 +33,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       
       {/* Background Ambience */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-amber-500/5 rounded-full blur-[100px]"></div>
+          <div className="absolute top-[-10%] left-[-10%] w-[60%] sm:w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[80px] sm:blur-[100px]"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[60%] sm:w-[40%] h-[40%] bg-amber-500/5 rounded-full blur-[80px] sm:blur-[100px]"></div>
       </div>
 
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-fade-in relative z-10">
@@ -43,30 +42,30 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {/* Glow Line */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500/50 to-transparent"></div>
         
-        {/* Header */}
-        <div className="p-10 pb-8 flex flex-col items-center justify-center border-b border-slate-800 bg-slate-950/30">
-            <div className="relative mb-5 group transform transition-transform hover:scale-105 duration-300">
+        {/* Header - Reduzido para Mobile */}
+        <div className="p-8 sm:p-10 pb-6 sm:pb-8 flex flex-col items-center justify-center border-b border-slate-800 bg-slate-950/30">
+            <div className="relative mb-4 sm:mb-5 group transform transition-transform hover:scale-105 duration-300">
                 <div className="absolute inset-0 bg-amber-500/20 blur-xl rounded-full"></div>
-                <Shield className="w-24 h-24 text-amber-400 relative z-10 fill-amber-400/20 drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]" />
+                <Shield className="w-16 h-16 sm:w-24 sm:h-24 text-amber-400 relative z-10 fill-amber-400/20 drop-shadow-[0_0_15px_rgba(251,191,36,0.6)]" />
             </div>
-            <h1 className="text-6xl font-black text-amber-400 tracking-tighter leading-none drop-shadow-2xl mb-4 font-sans text-center">
+            <h1 className="text-4xl sm:text-6xl font-black text-amber-400 tracking-tighter leading-none drop-shadow-2xl mb-4 font-sans text-center uppercase">
                 CCOS
             </h1>
-            <div className="flex items-center justify-center gap-3">
-                 <div className="bg-white px-3 py-1 rounded-[4px] h-9 flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
-                    <span className="text-[10px] font-extrabold text-red-700 leading-none text-center tracking-tighter">UNILOG<br/>EXPRESS</span>
+            <div className="flex items-center justify-center gap-2 sm:gap-3">
+                 <div className="bg-white px-2 sm:px-3 py-1 rounded-[4px] h-8 sm:h-9 flex items-center justify-center shadow-lg">
+                    <span className="text-[7px] sm:text-[10px] font-extrabold text-red-700 leading-none text-center tracking-tighter uppercase">UNILOG<br/>EXPRESS</span>
                  </div>
-                 <div className="bg-white px-3 py-1 rounded-[4px] h-9 flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
-                    <span className="text-[10px] font-extrabold text-cyan-600 leading-none text-center tracking-tighter">4ELOS<br/>DISTRIB.</span>
+                 <div className="bg-white px-2 sm:px-3 py-1 rounded-[4px] h-8 sm:h-9 flex items-center justify-center shadow-lg">
+                    <span className="text-[7px] sm:text-[10px] font-extrabold text-cyan-600 leading-none text-center tracking-tighter uppercase">4ELOS<br/>DISTRIB.</span>
                  </div>
             </div>
         </div>
 
-        <div className="p-8">
-            <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="p-6 sm:p-8">
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             
             <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Email Corporativo</label>
+                <label className="block text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 ml-1">Email Corporativo</label>
                 <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Mail className="h-5 w-5 text-slate-600 group-focus-within:text-blue-500 transition-colors" />
@@ -75,7 +74,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-slate-600 text-sm"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-slate-600 text-sm"
                         placeholder="usuario@ccos.com"
                         required
                     />
@@ -83,7 +82,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 ml-1">Senha</label>
+                <label className="block text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 ml-1">Senha de Acesso</label>
                 <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Lock className="h-5 w-5 text-slate-600 group-focus-within:text-blue-500 transition-colors" />
@@ -92,7 +91,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         type={showPassword ? "text" : "password"}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-12 py-3 text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-slate-600 text-sm"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-12 py-3 text-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-slate-600 text-sm"
                         placeholder="••••••••"
                         required
                     />
@@ -108,7 +107,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             </div>
 
             {error && (
-                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs text-center font-medium flex items-center justify-center gap-2 animate-pulse">
+                <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs text-center font-bold flex items-center justify-center gap-2 animate-pulse">
                     <AlertCircle size={14} className="shrink-0" />
                     {error}
                 </div>
@@ -117,7 +116,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-lg transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2 group"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl transition-all shadow-lg shadow-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2 group uppercase text-sm tracking-widest active:scale-95"
             >
                 {loading ? <Loader2 className="animate-spin" size={20} /> : (
                     <>
@@ -129,8 +128,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </div>
         
         <div className="bg-slate-950/50 p-4 text-center border-t border-slate-800">
-             <p className="text-[10px] text-slate-600">
-                 Acesso restrito a pessoal autorizado. <br/>Dúvidas? Contate o Administrador.
+             <p className="text-[10px] text-slate-600 uppercase tracking-widest font-bold">
+                 Acesso Restrito / Pessoal Autorizado
              </p>
         </div>
       </div>

@@ -1,38 +1,35 @@
+
 import React, { useState } from 'react';
-import { Note, Meeting, CalendarEvent } from '../types';
+import { Note, ShiftNote, User as AppUser } from '../types';
 import { 
   Calendar, Clock, CheckSquare, Square, Trash2, Plus, 
-  NotebookPen, Users, FileText, AlertCircle, Edit2, Save, X 
+  NotebookPen, History, UserCircle, Save, X, Edit2
 } from 'lucide-react';
 
 interface OrganizerProps {
+  currentUser: AppUser;
   notes: Note[];
-  meetings: Meeting[];
-  events: CalendarEvent[];
+  shiftNotes: ShiftNote[];
   onAddNote: (note: Note) => void;
   onToggleNote: (id: string) => void;
   onDeleteNote: (id: string) => void;
   onEditNote: (id: string, newContent: string) => void;
-  onAddMeeting: (meeting: Meeting) => void;
-  onDeleteMeeting: (id: string) => void;
-  onAddEvent: (event: CalendarEvent) => void;
-  onDeleteEvent: (id: string) => void;
+  onAddShiftNote: (note: ShiftNote) => void;
+  onDeleteShiftNote: (id: string) => void;
 }
 
 const Organizer: React.FC<OrganizerProps> = ({
-  notes, meetings, events,
+  currentUser, notes, shiftNotes,
   onAddNote, onToggleNote, onDeleteNote, onEditNote,
-  onAddMeeting, onDeleteMeeting, onAddEvent, onDeleteEvent
+  onAddShiftNote, onDeleteShiftNote
 }) => {
   // State for Inputs
   const [noteInput, setNoteInput] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
 
-  const [meetingForm, setMeetingForm] = useState({ title: '', date: '', time: '', participants: '', observations: '' });
-  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '' });
-  const [showMeetingModal, setShowMeetingModal] = useState(false);
-  const [showEventModal, setShowEventModal] = useState(false);
+  const [shiftInput, setShiftInput] = useState('');
+  const [showShiftModal, setShowShiftModal] = useState(false);
 
   // --- NOTES HANDLERS ---
   const handleNoteSubmit = (e: React.FormEvent) => {
@@ -59,36 +56,26 @@ const Organizer: React.FC<OrganizerProps> = ({
     setEditingNoteId(null);
   };
 
-  // --- MEETING HANDLERS ---
-  const handleMeetingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!meetingForm.title || !meetingForm.date || !meetingForm.time) return;
-    onAddMeeting({
-      id: Date.now().toString(),
-      ...meetingForm
-    });
-    setMeetingForm({ title: '', date: '', time: '', participants: '', observations: '' });
-    setShowMeetingModal(false);
-  };
-
-  // --- EVENT HANDLERS ---
-  const handleEventSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!eventForm.title || !eventForm.date) return;
-    onAddEvent({
-      id: Date.now().toString(),
-      ...eventForm
-    });
-    setEventForm({ title: '', description: '', date: '', time: '' });
-    setShowEventModal(false);
+  // --- SHIFT NOTES HANDLERS ---
+  const handleShiftSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!shiftInput.trim()) return;
+      onAddShiftNote({
+          id: Date.now().toString(),
+          author: currentUser.name,
+          authorId: currentUser.uid,
+          content: shiftInput,
+          createdAt: new Date().toISOString()
+      });
+      setShiftInput('');
+      setShowShiftModal(false);
   };
 
   // Sort Logic
-  const sortedMeetings = [...meetings].sort((a, b) => new Date(a.date + 'T' + a.time).getTime() - new Date(b.date + 'T' + b.time).getTime());
-  const sortedEvents = [...events].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const sortedShiftNotes = [...shiftNotes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8 animate-fade-in pb-12">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-8 animate-fade-in pb-12">
       
       {/* Header */}
       <div className="flex flex-col gap-2">
@@ -96,44 +83,85 @@ const Organizer: React.FC<OrganizerProps> = ({
             <Calendar className="text-amber-500" />
             Agenda e Anotações
          </h2>
-         <p className="text-slate-400 text-sm">Organize suas tarefas diárias, agende reuniões e não perca eventos importantes.</p>
+         <p className="text-slate-400 text-sm">Gerencie anotações de plantão e lembretes particulares.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        {/* COLUMN 1: DAILY NOTES */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col h-[600px]">
-           <div className="flex items-center gap-2 mb-4 text-blue-400 font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-2">
-              <NotebookPen size={18} /> Anotações Rápidas
+        {/* COLUMN 1: SHIFT REPORTS (Ocorrências de Plantão) */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg flex flex-col h-[700px] border-t-4 border-t-amber-500">
+           <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-2 text-amber-500 font-bold uppercase tracking-wider text-sm">
+                  <History size={20} /> Relatório de Plantão
+              </div>
+              <button onClick={() => setShowShiftModal(true)} className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-lg transition-all shadow-lg shadow-amber-900/40 flex items-center gap-2 text-sm font-bold">
+                 <Plus size={18} /> Novo Registro
+              </button>
            </div>
 
-           <form onSubmit={handleNoteSubmit} className="flex gap-2 mb-4">
+           <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+              {sortedShiftNotes.length === 0 && (
+                <div className="text-center text-slate-600 text-xs italic py-20">
+                  Nenhum registro de plantão. Clique no botão acima para iniciar.
+                </div>
+              )}
+              {sortedShiftNotes.map(sn => (
+                <div key={sn.id} className="bg-slate-950 border border-slate-800 rounded-xl p-5 hover:border-amber-500/30 transition-all group relative">
+                   <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold border border-amber-500/20 text-xs">
+                         {sn.author.charAt(0)}
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white uppercase block">{sn.author}</span>
+                        <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                          <Clock size={10} /> {new Date(sn.createdAt).toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                   </div>
+                   <p className="text-sm text-slate-300 leading-relaxed mb-1 whitespace-pre-wrap">{sn.content}</p>
+                   { (currentUser.role === 'admin' || currentUser.uid === sn.authorId) && (
+                      <button onClick={() => onDeleteShiftNote(sn.id)} className="absolute top-4 right-4 text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity p-2">
+                          <Trash2 size={16} />
+                      </button>
+                   )}
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* COLUMN 2: DAILY NOTES */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg flex flex-col h-[700px] border-t-4 border-t-blue-500">
+           <div className="flex items-center gap-2 mb-6 text-blue-400 font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-4">
+              <NotebookPen size={20} /> Anotações Particulares
+           </div>
+
+           <form onSubmit={handleNoteSubmit} className="flex gap-2 mb-6">
               <input 
                 type="text" 
                 value={noteInput}
                 onChange={(e) => setNoteInput(e.target.value)}
-                placeholder="Escreva algo..." 
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                placeholder="Lembrete rápido..." 
+                className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
               />
-              <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg transition-colors">
-                <Plus size={20} />
+              <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white p-3 rounded-lg transition-all shadow-lg shadow-blue-900/40">
+                <Plus size={24} />
               </button>
            </form>
 
            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
               {notes.length === 0 && (
-                <div className="text-center text-slate-600 text-xs italic py-10">
-                  Nenhuma anotação pendente.
+                <div className="text-center text-slate-600 text-xs italic py-20">
+                  Sua lista de anotações está vazia.
                 </div>
               )}
               {notes.map(note => (
-                <div key={note.id} className={`p-3 rounded-lg border transition-all group ${note.completed ? 'bg-slate-950/50 border-slate-800 opacity-60' : 'bg-slate-800/40 border-slate-700 hover:border-blue-500/50'}`}>
-                   <div className="flex items-start gap-3">
+                <div key={note.id} className={`p-4 rounded-xl border transition-all group ${note.completed ? 'bg-slate-950/50 border-slate-800 opacity-60' : 'bg-slate-800/40 border-slate-700 hover:border-blue-500/50'}`}>
+                   <div className="flex items-start gap-4">
                       <button 
                         onClick={() => onToggleNote(note.id)} 
                         className={`mt-0.5 shrink-0 ${note.completed ? 'text-emerald-500' : 'text-slate-500 hover:text-white'}`}
                       >
-                        {note.completed ? <CheckSquare size={18} /> : <Square size={18} />}
+                        {note.completed ? <CheckSquare size={22} /> : <Square size={22} />}
                       </button>
                       
                       <div className="flex-1 min-w-0">
@@ -142,14 +170,14 @@ const Organizer: React.FC<OrganizerProps> = ({
                              <input 
                                value={editingNoteText}
                                onChange={(e) => setEditingNoteText(e.target.value)}
-                               className="w-full bg-slate-950 text-white text-sm p-1 rounded border border-blue-500 focus:outline-none"
+                               className="w-full bg-slate-950 text-white text-sm p-2 rounded border border-blue-500 focus:outline-none"
                                autoFocus
                                onKeyDown={(e) => e.key === 'Enter' && saveEditedNote(note.id)}
                              />
-                             <button onClick={() => saveEditedNote(note.id)} className="text-emerald-500"><Save size={16}/></button>
+                             <button onClick={() => saveEditedNote(note.id)} className="text-emerald-500 p-1"><Save size={20}/></button>
                            </div>
                          ) : (
-                           <p className={`text-sm break-words ${note.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                           <p className={`text-sm break-words leading-relaxed ${note.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
                               {note.content}
                            </p>
                          )}
@@ -157,12 +185,12 @@ const Organizer: React.FC<OrganizerProps> = ({
 
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                          {editingNoteId !== note.id && (
-                           <button onClick={() => startEditingNote(note)} className="text-slate-500 hover:text-blue-400 p-1">
-                             <Edit2 size={14} />
+                           <button onClick={() => startEditingNote(note)} className="text-slate-500 hover:text-blue-400 p-1.5">
+                             <Edit2 size={16} />
                            </button>
                          )}
-                         <button onClick={() => onDeleteNote(note.id)} className="text-slate-500 hover:text-rose-500 p-1">
-                            <Trash2 size={14} />
+                         <button onClick={() => onDeleteNote(note.id)} className="text-slate-500 hover:text-rose-500 p-1.5">
+                            <Trash2 size={16} />
                          </button>
                       </div>
                    </div>
@@ -171,131 +199,44 @@ const Organizer: React.FC<OrganizerProps> = ({
            </div>
         </div>
 
-        {/* COLUMN 2: MEETINGS */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col h-[600px]">
-           <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase tracking-wider text-sm">
-                  <Users size={18} /> Reuniões
-              </div>
-              <button onClick={() => setShowMeetingModal(true)} className="text-emerald-400 hover:text-emerald-300 text-xs flex items-center gap-1 font-bold">
-                 <Plus size={14} /> Nova
-              </button>
-           </div>
-
-           <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-              {sortedMeetings.length === 0 && (
-                <div className="text-center text-slate-600 text-xs italic py-10">
-                  Nenhuma reunião agendada.
-                </div>
-              )}
-              {sortedMeetings.map(meeting => (
-                <div key={meeting.id} className="bg-slate-800/30 border border-slate-700 rounded-lg p-4 hover:border-emerald-500/50 transition-all relative group">
-                   <button onClick={() => onDeleteMeeting(meeting.id)} className="absolute top-2 right-2 text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Trash2 size={14} />
-                   </button>
-                   <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-bold text-white text-sm">{meeting.title}</h4>
-                      <div className="flex items-center gap-1 text-xs text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                         <Clock size={12} /> {meeting.time}
-                      </div>
-                   </div>
-                   <div className="text-xs text-slate-400 mb-2 flex items-center gap-2">
-                      <Calendar size={12} /> {new Date(meeting.date).toLocaleDateString('pt-BR')}
-                   </div>
-                   {meeting.participants && (
-                     <div className="text-xs text-slate-300 mb-2">
-                        <span className="text-slate-500">Participantes:</span> {meeting.participants}
-                     </div>
-                   )}
-                   {meeting.observations && (
-                     <div className="text-xs text-slate-400 italic border-t border-slate-700/50 pt-2 mt-2">
-                        "{meeting.observations}"
-                     </div>
-                   )}
-                </div>
-              ))}
-           </div>
-        </div>
-
-        {/* COLUMN 3: IMPORTANT EVENTS */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col h-[600px]">
-           <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2 text-amber-400 font-bold uppercase tracking-wider text-sm">
-                  <AlertCircle size={18} /> Lembretes Importantes
-              </div>
-              <button onClick={() => setShowEventModal(true)} className="text-amber-400 hover:text-amber-300 text-xs flex items-center gap-1 font-bold">
-                 <Plus size={14} /> Novo
-              </button>
-           </div>
-
-           <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-              {sortedEvents.length === 0 && (
-                <div className="text-center text-slate-600 text-xs italic py-10">
-                  Nenhum lembrete definido.
-                </div>
-              )}
-              {sortedEvents.map(event => (
-                <div key={event.id} className="bg-amber-950/10 border-l-4 border-amber-500 rounded-r-lg p-4 relative group">
-                   <button onClick={() => onDeleteEvent(event.id)} className="absolute top-2 right-2 text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Trash2 size={14} />
-                   </button>
-                   <h4 className="font-bold text-amber-100 text-sm mb-1">{event.title}</h4>
-                   <div className="flex items-center gap-3 text-xs text-amber-500/80 mb-2 font-mono">
-                      <span>{new Date(event.date).toLocaleDateString('pt-BR')}</span>
-                      {event.time && <span>{event.time}</span>}
-                   </div>
-                   {event.description && (
-                     <p className="text-xs text-slate-400 leading-relaxed">
-                        {event.description}
-                     </p>
-                   )}
-                </div>
-              ))}
-           </div>
-        </div>
-
       </div>
 
-      {/* --- MODALS --- */}
-
-      {/* Meeting Modal */}
-      {showMeetingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md p-6 animate-fade-in">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-white">Nova Reunião</h3>
-                    <button onClick={() => setShowMeetingModal(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
+      {/* --- MODAL: SHIFT NOTE --- */}
+      {showShiftModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-lg p-6">
+                <div className="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        <History className="text-amber-500" />
+                        Registro de Ocorrência
+                    </h3>
+                    <button onClick={() => setShowShiftModal(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
                 </div>
-                <form onSubmit={handleMeetingSubmit} className="space-y-3">
-                    <input required type="text" placeholder="Título da Reunião" value={meetingForm.title} onChange={e => setMeetingForm({...meetingForm, title: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm" />
-                    <div className="grid grid-cols-2 gap-3">
-                        <input required type="date" value={meetingForm.date} onChange={e => setMeetingForm({...meetingForm, date: e.target.value})} className="bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm [color-scheme:dark]" />
-                        <input required type="time" value={meetingForm.time} onChange={e => setMeetingForm({...meetingForm, time: e.target.value})} className="bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm [color-scheme:dark]" />
+                <div className="bg-slate-950/50 p-4 rounded-lg border border-slate-800 mb-4 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 font-bold text-lg border border-amber-500/20">
+                        {currentUser.name.charAt(0)}
                     </div>
-                    <input type="text" placeholder="Participantes (separar por vírgula)" value={meetingForm.participants} onChange={e => setMeetingForm({...meetingForm, participants: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm" />
-                    <textarea placeholder="Observações..." value={meetingForm.observations} onChange={e => setMeetingForm({...meetingForm, observations: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm h-20 resize-none" />
-                    <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded">Agendar</button>
-                </form>
-            </div>
-        </div>
-      )}
-
-      {/* Event Modal */}
-      {showEventModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md p-6 animate-fade-in">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-white">Novo Lembrete</h3>
-                    <button onClick={() => setShowEventModal(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
+                    <div>
+                        <p className="text-sm font-bold text-white uppercase">{currentUser.name}</p>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-widest">Plantonista em {new Date().toLocaleDateString('pt-BR')}</p>
+                    </div>
                 </div>
-                <form onSubmit={handleEventSubmit} className="space-y-3">
-                    <input required type="text" placeholder="Título do Evento" value={eventForm.title} onChange={e => setEventForm({...eventForm, title: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm" />
-                    <div className="grid grid-cols-2 gap-3">
-                        <input required type="date" value={eventForm.date} onChange={e => setEventForm({...eventForm, date: e.target.value})} className="bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm [color-scheme:dark]" />
-                        <input type="time" value={eventForm.time} onChange={e => setEventForm({...eventForm, time: e.target.value})} className="bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm [color-scheme:dark]" />
+                <form onSubmit={handleShiftSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 ml-1">Descrição do Plantão</label>
+                        <textarea 
+                            required
+                            autoFocus
+                            placeholder="Descreva as ocorrências e observações do turno..." 
+                            value={shiftInput} 
+                            onChange={e => setShiftInput(e.target.value)} 
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 text-white text-sm focus:border-amber-500 focus:outline-none h-48 resize-none leading-relaxed" 
+                        />
                     </div>
-                    <textarea placeholder="Descrição..." value={eventForm.description} onChange={e => setEventForm({...eventForm, description: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white text-sm h-20 resize-none" />
-                    <button type="submit" className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded">Salvar Lembrete</button>
+                    <div className="flex gap-3">
+                        <button type="button" onClick={() => setShowShiftModal(false)} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-medium">Cancelar</button>
+                        <button type="submit" className="flex-1 px-4 py-3 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shadow-lg shadow-amber-900/40 transition-transform active:scale-95">Salvar Registro</button>
+                    </div>
                 </form>
             </div>
         </div>
